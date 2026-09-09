@@ -1,9 +1,9 @@
 import { generatePDF } from '@/lib/pdf-generator'
 import { NextResponse } from 'next/server'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const pdf = await generatePDF()
+    const pdf = await generatePDF(new URL(request.url).origin)
 
     return new NextResponse(Buffer.from(pdf), {
       headers: {

@@ -1,11 +1,7 @@
 import jsPDF from 'jspdf'
 
-export async function generatePDF(): Promise<Buffer> {
+export async function generatePDF(baseURL: string): Promise<Buffer> {
   try {
-    const baseURL = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000'
-
     const response = await fetch(`${baseURL}/docs`, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',

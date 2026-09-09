@@ -1,31 +1,6 @@
-import React from 'react';
-import { compileMDX } from 'next-mdx-remote/rsc';
-import { CodeBlock } from '@/components/content/CodeBlock';
-import { VideoEmbed } from '@/components/content/VideoEmbed';
-import { Callout } from '@/components/content/Callout';
-import { Table } from '@/components/content/Table';
-import { mdxComponents } from '@/lib/mdx-components';
-import remarkGfm from 'remark-gfm';
 import fs from 'fs/promises';
 import path from 'path';
-
-export interface DocMetadata {
-  title?: string;
-  description?: string;
-}
-
-interface GetDocResult {
-  content: React.ReactElement;
-  metadata?: DocMetadata;
-}
-
-const componentsMap = {
-  ...mdxComponents,
-  CodeBlock,
-  VideoEmbed,
-  Callout,
-  Table,
-};
+import { compileDocSource, type GetDocResult } from '@/lib/mdx-core';
 
 export async function getDocBySlug(slug: string[]): Promise<GetDocResult> {
   const contentPath = path.join(process.cwd(), 'src', 'content');
@@ -34,24 +9,8 @@ export async function getDocBySlug(slug: string[]): Promise<GetDocResult> {
   try {
     const source = await fs.readFile(filePath, 'utf-8');
 
-    const { content, frontmatter } = await compileMDX({
-      source,
-      components: componentsMap,
-      options: {
-        parseFrontmatter: true,
-        // GFM is what gives us pipe tables, strikethrough and autolinks.
-        // Without it every table in the manual renders as raw pipe text.
-        mdxOptions: {
-          remarkPlugins: [remarkGfm],
-        },
-      },
-    });
-
-    return {
-      content,
-      metadata: frontmatter as DocMetadata,
-    };
-  } catch (error) {
+    return compileDocSource(source);
+  } catch {
     throw new Error(`Failed to load document: ${slug.join('/')}`);
   }
 }

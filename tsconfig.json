@@ -32,6 +32,9 @@
       {
         "name": "next"
       }
+    ],
+    "types": [
+      "vite/client"
     ]
   },
   "include": [

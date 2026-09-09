@@ -47,3 +47,7 @@ tsconfig.tsbuildinfo
 # patterns miss one-off CLI pulls (e.g. .env.prodpull from `vercel env pull`),
 # which is how live secrets reach a commit. Name the exceptions, not the secrets.
 .env*
+.vinext/
+.wrangler/
+.dev.vars
+cloudflare-env.d.ts
