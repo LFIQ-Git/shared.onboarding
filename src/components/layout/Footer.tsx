@@ -1,5 +1,8 @@
 export function Footer() {
+  // The Pacific calendar day. The Worker renders in UTC, which is already
+  // tomorrow from 5 PM (PDT) / 4 PM (PST) onward.
   const today = new Date().toLocaleDateString('en-US', {
+    timeZone: 'America/Los_Angeles',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
