@@ -48,7 +48,7 @@ One push to `brick.command` main can trigger eight builds. Each app keeps its ow
 
 **Fix:**
 ```bash
-cd 02-brick.apps/02-brick.command/apps/web
+cd brick.apps/brick.command/apps/web
 echo "1" | vercel env add VERCEL_FORCE_NO_BUILD_CACHE production
 git commit --allow-empty -m "chore: force no-cache build"
 git push origin main

@@ -63,7 +63,7 @@ Until this lands, the property exists in Command but has no financials, no rent 
 The authoritative source is the SF Planning Property Information Map, a public no-auth ArcGIS service that returns a parcel's official street and address range, so it handles ranges and corner lots natively. It returns nothing for a non-SF address, which is the correct exclusion for the East Bay assets.
 
 ```bash
-cd /Volumes/satopkm/justinsato/Projects/ACTIVE/02-brick.apps/02-brick.stacks
+cd /Volumes/minibase-ssd/justinsato/Projects/ACTIVE/brick.stacks
 
 # Resolve owned properties to APNs (read-only, produces a map file for review)
 node scripts/sfpim-resolve.mjs

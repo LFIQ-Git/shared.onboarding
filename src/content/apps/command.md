@@ -46,7 +46,7 @@ Command is a comprehensive portfolio operating system:
 ### Start the App
 
 ```bash
-cd /path/to/02-brick.apps/apps/command
+cd /path/to/brick.apps/apps/command
 npm run dev
 # Runs on http://localhost:3002
 ```
@@ -107,7 +107,7 @@ git push origin main
 colima start
 
 # Deploy from the backend directory, always from main
-cd 02-brick.command/backend
+cd brick.command/backend
 flyctl deploy --app brickston-backend --local-only
 ```
 

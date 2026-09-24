@@ -20,8 +20,8 @@ You do not need a local Postgres and you do not need a database proxy. Apps conn
 
 ### 1a. Clone the monorepo
 ```bash
-git clone https://github.com/LFIQ-Git/02-brick.apps.git
-cd 02-brick.apps
+git clone https://github.com/LFIQ-Git/brick.apps.git
+cd brick.apps
 ```
 
 ### 1b. Install Node and Python versions via mise
@@ -94,13 +94,13 @@ vercel env pull
 
 Repeat for each app (if developing on multiple):
 ```bash
-# From 02-brick.apps/apps/hub
+# From brick.apps/apps/hub
 vercel link --project hub && vercel env pull
 
-# From 02-brick.apps/apps/intel
+# From brick.apps/apps/intel
 vercel link --project intel && vercel env pull
 
-# From 02-brick.apps/apps/command
+# From brick.apps/apps/command
 vercel link --project command && vercel env pull
 
 # ... and so on for keystone, registry, stacks, sticks
@@ -110,7 +110,7 @@ vercel link --project command && vercel env pull
 
 ### 5a. Start the Hub app (default)
 ```bash
-cd /path/to/02-brick.apps/apps/hub
+cd /path/to/brick.apps/apps/hub
 npm run dev
 # Expected output:
 # ▲ Next.js 15.0.0

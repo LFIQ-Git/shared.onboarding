@@ -43,7 +43,7 @@ Stacks focuses on SF multifamily deal sourcing:
 ### Start the App
 
 ```bash
-cd /path/to/02-brick.apps/apps/stacks
+cd /path/to/brick.apps/apps/stacks
 npm run dev
 # Runs on http://localhost:3005
 ```

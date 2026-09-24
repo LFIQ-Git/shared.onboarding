@@ -32,8 +32,8 @@ Every internal app is a subdomain of `lfiq.app`. The full list of primary domain
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/LFIQ-Git/02-brick.apps.git
-cd 02-brick.apps
+git clone https://github.com/LFIQ-Git/brick.apps.git
+cd brick.apps
 mise install
 npm ci
 

@@ -41,7 +41,7 @@ Hub is a unified gateway into the LFIQ ecosystem. New users land on Hub, authent
 ### Start the App
 
 ```bash
-cd /path/to/02-brick.apps/apps/hub
+cd /path/to/brick.apps/apps/hub
 npm run dev
 ```
 

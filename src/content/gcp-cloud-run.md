@@ -62,7 +62,7 @@ Nine batch jobs moved to the Fly `brick-cron` dispatcher. Two were deleted outri
 | `migration-runner-job` | Parked on Cloud Run, idle since 2026-05-16 | Waiting on a schema freeze before it moves |
 | `lfi-invoice-job` | Superseded, cannot fire. Billing is disabled on its project | Fly app `lfi-invoice`, migrated 2026-07-26 |
 
-The `gdm-extractor` source still lives at `02-brick.intel/jobs/gdm-extractor/`, and its heartbeat rows in `items.source_runs` still record `trigger_env='cloud-run'` because that string was never updated after the move. The job runs on Fly. Ignore the label.
+The `gdm-extractor` source still lives at `brick.intel/jobs/gdm-extractor/`, and its heartbeat rows in `items.source_runs` still record `trigger_env='cloud-run'` because that string was never updated after the move. The job runs on Fly. Ignore the label.
 
 `lfi-invoice-job` looks like a duplicate of the Fly app `lfi-invoice` and is worth understanding, because both send real invoices rather than drafts. It was resolved on 2026-08-12: only the Fly app can run. Billing is disabled on `graphic-iridium-485814-b2`, so the Cloud Run job and its two Cloud Scheduler triggers cannot fire. The Fly machine `lfi-invoice-cron` runs daily and the job self-gates in code to the 1st and 15th, which is why a daily schedule is correct here.
 
@@ -116,7 +116,7 @@ You will hit these claims in repository files and old runbooks. Each one is wron
 
 | If a doc says | The current truth is |
 |---------------|----------------------|
-| "Deploy the backend with `gcloud run deploy`" | `flyctl deploy --app brickston-backend --local-only` from `02-brick.command/backend` |
+| "Deploy the backend with `gcloud run deploy`" | `flyctl deploy --app brickston-backend --local-only` from `brick.command/backend` |
 | "The GDM extractor is a Cloud Run job in `brickston-v2`" | It runs from Fly `brick-cron` on the `brick-gdm` app, daily at 11:30 Pacific |
 | "`items-hub-causal` runs nightly on Cloud Run" | Deleted 2026-08-08, not replaced |
 | "Cloud SQL `brickston_v2` on port 5433 via the Auth Proxy" | Cloud SQL is gone. Connect to Neon `neondb` directly |
@@ -180,7 +180,7 @@ These are the items a new engineer will trip over, in the order they matter.
 2. Confirm whether `python-runner` still serves anything. If not, delete it.
 3. Resolve the `lfi-invoice` duplication before an invoice goes out twice.
 4. Delete the idle Cloud Run services once the Fly bake period closes. `brickston-backend` and `pkm-mcp` are kept only for rollback.
-5. Update the repository CLAUDE.md files. `02-brick.apps/CLAUDE.md` still describes `gdm-extractor` as a Cloud Run job, and `02-brick.intel/CLAUDE.md` still describes `items-hub-causal` as a live Cloud Run job. Both are wrong.
+5. Update the repository CLAUDE.md files. `brick.apps/CLAUDE.md` still describes `gdm-extractor` as a Cloud Run job, and `brick.intel/CLAUDE.md` still describes `items-hub-causal` as a live Cloud Run job. Both are wrong.
 
 ## Where to get help
 

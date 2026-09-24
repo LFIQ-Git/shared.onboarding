@@ -73,7 +73,7 @@ Keystone previews always fail. `DATABASE_URL` is set only in the production envi
 Vercel holds the runtime environment for every project. Pull it locally rather than hand-assembling a `.env.local`:
 
 ```bash
-cd 02-brick.intel
+cd brick.intel
 vercel link --scope lfiq          # choose the brick.intel project
 vercel env pull .env.local        # writes the development environment
 vercel env pull .env.local --environment=production   # when you need prod values
@@ -82,7 +82,7 @@ vercel env pull .env.local --environment=production   # when you need prod value
 For the Command monorepo, link from the sub-app directory, not the repo root, or you will pull the wrong project's variables:
 
 ```bash
-cd 02-brick.command/apps/web && vercel link --scope lfiq && vercel env pull .env.local
+cd brick.command/apps/web && vercel link --scope lfiq && vercel env pull .env.local
 cd ../repair && vercel link --scope lfiq && vercel env pull .env.local
 ```
 

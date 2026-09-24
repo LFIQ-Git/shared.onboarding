@@ -47,7 +47,7 @@ The site is `leftfieldiq.com`. `leftfieldiq.app` does not resolve; do not link t
 ### Start the Site
 
 ```bash
-cd /path/to/02-brick.apps/apps/leftfieldiq-site
+cd /path/to/brick.apps/apps/leftfieldiq-site
 npm run dev
 # Runs on http://localhost:3007
 ```

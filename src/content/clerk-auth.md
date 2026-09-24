@@ -69,7 +69,7 @@ Two roles. Clerk organization role is the source of truth and everything else de
 
 Per-app permissions are Clerk permission strings: `org:brick:hub`, `org:brick:cockpit` (Command still uses the legacy key), `org:brick:intel`, `org:brick:keystone`, `org:brick:registry`, `org:brick:sticks`, `org:brick:stacks`, and `org:brick:admin`. User administration additionally requires `org:sys_memberships:manage`, granted only to `brick_admin`.
 
-Resolution logic lives in `02-brick.hub/hub/lib/brick-roles.ts`. If the session has `org:admin` the user resolves to `brick_admin`; `org:member` resolves to `command_user`; anything else gets no access.
+Resolution logic lives in `brick.hub/hub/lib/brick-roles.ts`. If the session has `org:admin` the user resolves to `brick_admin`; `org:member` resolves to `command_user`; anything else gets no access.
 
 Apps check membership two ways depending on age. Intel, Keystone, and Stacks check that `sessionClaims.apps` contains their app key. Registry checks the Clerk org permission `org:brick:registry` directly and deliberately fails open on a missing claim, so that Hub's SSO cookie carries in without a claim refresh.
 
@@ -112,7 +112,7 @@ export const config = {
 };
 ```
 
-Hub is the exception. Its real gate is `02-brick.hub/hub/proxy.ts`, re-exported through `middleware.ts`, because it also handles guest cookies and clears stale Clerk cookies on auth failure.
+Hub is the exception. Its real gate is `brick.hub/hub/proxy.ts`, re-exported through `middleware.ts`, because it also handles guest cookies and clears stale Clerk cookies on auth failure.
 
 Public routes across apps: `/login(.*)`, `/api(.*)`, `/manifest.webmanifest`, `/sw.js`, `/favicon.ico`, `/robots.txt`, `/icon.png`, `/icon.svg`. Hub adds `/__clerk(.*)` and `/sign-up(.*)`, and its `/` splash has been public since 2026-07-18.
 

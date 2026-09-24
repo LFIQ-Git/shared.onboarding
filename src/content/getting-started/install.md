@@ -91,10 +91,10 @@ mise --version
 
 ### Installation: Node.js 20 & Python 3.11
 
-Once mise is installed, navigate to the 02-brick.apps monorepo and run:
+Once mise is installed, navigate to the brick.apps monorepo and run:
 
 ```bash
-cd /path/to/02-brick.apps
+cd /path/to/brick.apps
 mise install
 # Reads .mise.toml, installs Node 20 + Python 3.11
 ```
