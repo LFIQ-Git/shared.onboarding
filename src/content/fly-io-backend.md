@@ -55,40 +55,40 @@ Deploy from `main`. A stale branch will silently revert the object-storage rewir
 **brickston-backend**
 
 ```bash
-cd /Volumes/satopkm/justinsato/Projects/ACTIVE/02-brick.apps/02-brick.command/backend
+cd /Volumes/minibase-ssd/justinsato/Projects/ACTIVE/brick.command/backend
 flyctl deploy --app brickston-backend --local-only
 ```
 
 **brick-cron** (the crontab is baked into the image, so any schedule change needs a redeploy)
 
 ```bash
-cd /Volumes/satopkm/justinsato/Projects/ACTIVE/02-brick.apps/02-brick.hub/docs/migration-artifacts/fly/fly-cron
+cd /Volumes/minibase-ssd/justinsato/Projects/ACTIVE/brick.hub/docs/migration-artifacts/fly/fly-cron
 flyctl deploy --app brick-cron --local-only
 ```
 
-**brick-mcp-server** (the Dockerfile copies from both Keystone and Hub, so the build context is the `02-brick.apps` parent)
+**brick-mcp-server** (the Dockerfile copies from both Keystone and Hub, so the build context is the `brick.apps` parent)
 
 ```bash
-cd /Volumes/satopkm/justinsato/Projects/ACTIVE/02-brick.apps
+cd /Volumes/minibase-ssd/justinsato/Projects/ACTIVE/brick.apps
 flyctl deploy . \
-  --config 02-brick.hub/docs/migration-artifacts/fly/brick-mcp-server.fly.toml \
-  --dockerfile 02-brick.hub/packages/brick-agent-mcp/Dockerfile.cloudrun \
+  --config brick.hub/docs/migration-artifacts/fly/brick-mcp-server.fly.toml \
+  --dockerfile brick.hub/packages/brick-agent-mcp/Dockerfile.cloudrun \
   --app brick-mcp-server --local-only
 ```
 
 **pkm-mcp**
 
 ```bash
-cd /Volumes/satopkm/justinsato/Projects/ACTIVE/02-brick.apps
-flyctl deploy 02-brick.keystone \
-  --config 02-brick.hub/docs/migration-artifacts/fly/pkm-mcp.fly.toml \
+cd /Volumes/minibase-ssd/justinsato/Projects/ACTIVE/brick.apps
+flyctl deploy brick.keystone \
+  --config brick.hub/docs/migration-artifacts/fly/pkm-mcp.fly.toml \
   --app pkm-mcp --local-only
 ```
 
 **brick-cron-monitor** (public Healthchecks image, no local Dockerfile)
 
 ```bash
-cd /Volumes/satopkm/justinsato/Projects/ACTIVE/02-brick.apps/02-brick.hub/docs/migration-artifacts/fly/brick-cron-monitor
+cd /Volumes/minibase-ssd/justinsato/Projects/ACTIVE/brick.hub/docs/migration-artifacts/fly/brick-cron-monitor
 flyctl deploy --app brick-cron-monitor --local-only
 ```
 
@@ -98,14 +98,14 @@ Deploys often end with `i/o timeout to 8.8.8.8`. That is the local resolver, not
 
 Only `brickston-backend` keeps its `fly.toml` next to its source. Everything else is centralized under Hub's migration artifacts directory.
 
-| App | Config path (relative to `ACTIVE/02-brick.apps/`) |
+| App | Config path (relative to `ACTIVE/brick.apps/`) |
 |-----|---------------------------------------------------|
-| `brickston-backend` | `02-brick.command/backend/fly.toml` |
-| `brick-cron` | `02-brick.hub/docs/migration-artifacts/fly/fly-cron/fly.toml` |
-| `brick-cron-monitor` | `02-brick.hub/docs/migration-artifacts/fly/brick-cron-monitor/fly.toml` |
-| `brick-mcp-server` | `02-brick.hub/docs/migration-artifacts/fly/brick-mcp-server.fly.toml` |
-| `pkm-mcp` | `02-brick.hub/docs/migration-artifacts/fly/pkm-mcp.fly.toml` |
-| `lfi-invoice` | `02-brick.hub/docs/migration-artifacts/fly/lfi-invoice/fly.toml` |
+| `brickston-backend` | `brick.command/backend/fly.toml` |
+| `brick-cron` | `brick.hub/docs/migration-artifacts/fly/fly-cron/fly.toml` |
+| `brick-cron-monitor` | `brick.hub/docs/migration-artifacts/fly/brick-cron-monitor/fly.toml` |
+| `brick-mcp-server` | `brick.hub/docs/migration-artifacts/fly/brick-mcp-server.fly.toml` |
+| `pkm-mcp` | `brick.hub/docs/migration-artifacts/fly/pkm-mcp.fly.toml` |
+| `lfi-invoice` | `brick.hub/docs/migration-artifacts/fly/lfi-invoice/fly.toml` |
 
 Nothing about `brick-cron` lives in `brick.command`. Do not go looking for it there.
 

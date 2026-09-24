@@ -44,7 +44,7 @@ Intel aggregates operational intelligence from across the LFIQ ecosystem:
 ### Start the App
 
 ```bash
-cd /path/to/02-brick.apps/apps/intel
+cd /path/to/brick.apps/apps/intel
 npm run dev
 # Runs on http://localhost:3001
 ```
@@ -69,7 +69,7 @@ vercel env pull
 
 ## Data Sources (27 Registered, 24 Live)
 
-The registry is `02-brick.intel/app/lib/sources.ts`. It is the source of truth for what exists, on what cadence, and whether it is live. The live surface is `intel.lfiq.app/sources`.
+The registry is `brick.intel/app/lib/sources.ts`. It is the source of truth for what exists, on what cadence, and whether it is live. The live surface is `intel.lfiq.app/sources`.
 
 ### Incoming Integration Details
 

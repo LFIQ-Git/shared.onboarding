@@ -220,7 +220,7 @@ Several shared secrets gate machine calls between apps. The failure codes tell y
 ```sh
 NEW=$(openssl rand -hex 32)
 
-cd 02-brick.intel
+cd brick.intel
 vercel env rm INGEST_SECRET production --yes && printf %s "$NEW" | vercel env add INGEST_SECRET production
 vercel env rm BRICKSTON_ITEMS_HUB_INGEST_SECRET production --yes && printf %s "$NEW" | vercel env add BRICKSTON_ITEMS_HUB_INGEST_SECRET production
 

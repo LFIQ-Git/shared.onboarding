@@ -151,7 +151,7 @@ The BRICK apps run on one shared Clerk instance. NextAuth and the old `@brick/au
 
 ## External Data Sources
 
-Intel's source registry (`02-brick.intel/app/lib/sources.ts`) declares **27 sources: 24 live and 3 down**. The three down sources are Yardi, DocuSign, and a retired local file-drop feed. The full per-source table lives on [Data Ingestion](/docs/data-ingestion).
+Intel's source registry (`brick.intel/app/lib/sources.ts`) declares **27 sources: 24 live and 3 down**. The three down sources are Yardi, DocuSign, and a retired local file-drop feed. The full per-source table lives on [Data Ingestion](/docs/data-ingestion).
 
 ### Synchronous APIs (on-demand)
 - **Google and Microsoft OAuth**: Clerk social login

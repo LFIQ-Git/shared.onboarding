@@ -108,7 +108,7 @@ Candidate status values are constrained in the schema: `open`, `watch`, `pursuin
 
 ## Schedule
 
-All Stacks crons are in `02-brick.stacks/vercel.json`, UTC.
+All Stacks crons are in `brick.stacks/vercel.json`, UTC.
 
 | Route | Cron | Purpose |
 |-------|------|---------|

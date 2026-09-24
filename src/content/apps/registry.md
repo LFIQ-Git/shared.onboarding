@@ -44,7 +44,7 @@ Registry provides a centralized hub for deal sourcing and tracking:
 ### Start the App
 
 ```bash
-cd /path/to/02-brick.apps/apps/registry
+cd /path/to/brick.apps/apps/registry
 npm run dev
 # Runs on http://localhost:3004
 ```

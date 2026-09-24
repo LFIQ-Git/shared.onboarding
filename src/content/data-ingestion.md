@@ -6,7 +6,7 @@ Everything the platform knows about the portfolio and the SF market arrives thro
 
 | Plane | What it does | Lands in | Registry of record |
 |-------|--------------|----------|--------------------|
-| **Sources** | Bring raw external data into the platform | `items.inbox_items` (Intel), `gdm.*`, `portfolio.*`, `market.*`, `stacks.*` | `02-brick.intel/app/lib/sources.ts` seeds `items.source_config` |
+| **Sources** | Bring raw external data into the platform | `items.inbox_items` (Intel), `gdm.*`, `portfolio.*`, `market.*`, `stacks.*` | `brick.intel/app/lib/sources.ts` seeds `items.source_config` |
 | **Workflows** | Transform data already in-system | `items.tasks`, `items.commitments`, `items.decisions`, `items.knowledge_edges` | `items.workflow_runs` |
 
 Do not confuse the two. `/api/extract`, `/api/cron/extract-edges`, and `/api/admin/push-observations` in Intel are workflows, not sources. If a source card looks dead but rows are arriving, the problem is usually the extractor, not the pull.
@@ -17,7 +17,7 @@ The Intel source registry (`app/lib/sources.ts`) declares **27 sources**: 24 mar
 
 ## Intel-native sources (Vercel cron on `intel.lfiq.app`)
 
-Schedules below are the live entries in `02-brick.intel/vercel.json`. All Vercel cron expressions are UTC.
+Schedules below are the live entries in `brick.intel/vercel.json`. All Vercel cron expressions are UTC.
 
 | Route | Cron | Sources produced | Notes |
 |-------|------|------------------|-------|
@@ -41,7 +41,7 @@ This is the pipeline that carries the rent roll, vacancy, general ledger, AP det
 | SharePoint reporting site | Intel cron scans pinned folders, matches on **exact filename**, downloads on eTag change | Vacancy Report, IMG Rent Roll, the three financial workbooks |
 | Email | Send the workbook to `reports@in.lfiq.app`; a Cloudflare Email Worker relays it to Intel | Tenant Memos, AP Expense Detail, General Ledger |
 
-Registry of record is `02-brick.intel/app/lib/graph-report-imports.ts`. Command's Reports Console reads the same registry over `GET /api/report-registry`, so a report added there appears in both places.
+Registry of record is `brick.intel/app/lib/graph-report-imports.ts`. Command's Reports Console reads the same registry over `GET /api/report-registry`, so a report added there appears in both places.
 
 Facts that matter operationally:
 
@@ -68,13 +68,13 @@ Batch jobs run on fly.io, org `brickston`. The dispatcher is a small always-on m
 | `briefing-daily-public` | `15 7 * * *` | See the Daily Briefing page |
 | `briefing-weekly-soap` | `0 8 * * 1` | See the Daily Briefing page |
 
-The canonical crontab is checked in at `02-brick.hub/docs/migration-artifacts/fly/fly-cron/crontab`. Nothing about `brick-cron` lives in the Command repo.
+The canonical crontab is checked in at `brick.hub/docs/migration-artifacts/fly/fly-cron/crontab`. Nothing about `brick-cron` lives in the Command repo.
 
 **GCP is wound down.** Billing is disabled on the `brickston-v2` project, so the Cloud Scheduler API refuses every call including a plain list. Any doc or code comment describing these jobs as Cloud Run or Cloud Scheduler is out of date. One job, `migration-runner-job`, is still parked on GCP and idle.
 
 ## Command-produced sources
 
-Command's own scan jobs read the portfolio schema and POST digests to Intel `/api/ingest/market` with a shared ingest secret, differentiated by the `source` field. The catalog is `02-brick.command/backend/app/jobs/registry.py`, which is the trigger source of truth and now carries a `platform` field per job.
+Command's own scan jobs read the portfolio schema and POST digests to Intel `/api/ingest/market` with a shared ingest secret, differentiated by the `source` field. The catalog is `brick.command/backend/app/jobs/registry.py`, which is the trigger source of truth and now carries a `platform` field per job.
 
 | Intel source | Command endpoint | Cron (PT) |
 |--------------|------------------|-----------|
@@ -92,9 +92,9 @@ These are `target_kind="service"` jobs, meaning an HTTP POST to the backend rath
 
 | Pipeline | Trigger | Writes | Owner repo |
 |----------|---------|--------|------------|
-| Power BI Golden Data Model | Fly `gdm-extractor` | `gdm.*` directly, truncate and reload | `02-brick.intel/jobs/gdm-extractor` |
+| Power BI Golden Data Model | Fly `gdm-extractor` | `gdm.*` directly, truncate and reload | `brick.intel/jobs/gdm-extractor` |
 | Leasing market scrape | GitHub Actions cron | `market.cl_ads`, `market.listings_current` | leasing scraper repos |
-| SF civic and parcel data | Vercel cron on Stacks, `0 8 * * *` UTC | `stacks.parcels`, `stacks.signals` | `02-brick.stacks` |
+| SF civic and parcel data | Vercel cron on Stacks, `0 8 * * *` UTC | `stacks.parcels`, `stacks.signals` | `brick.stacks` |
 
 The Golden Data Model is the exception to the "everything lands in `inbox_items`" rule, and it is the only Power BI import in the fleet.
 

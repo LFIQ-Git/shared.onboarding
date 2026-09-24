@@ -45,7 +45,7 @@ Note the one-letter trap: `sticks.lfiq.app` is Sticks, `stacks.lfiq.app` is Stac
 ### Start the App
 
 ```bash
-cd /path/to/02-brick.apps/apps/sticks
+cd /path/to/brick.apps/apps/sticks
 npm run dev
 # Runs on http://localhost:3006
 ```
