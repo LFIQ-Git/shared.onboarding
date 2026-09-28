@@ -93,7 +93,7 @@ Remove `-pooler` from the host for the direct string. Never paste a DSN into cha
 
 ### Symptom: writes succeed but no other app sees the rows
 
-**Cause:** the app's DSN still points at the retired `ep-tiny-lab-akrddwgy` endpoint in the old Neon organization. `brick-intel` and `brick-watch` did this until 2026-09-11, and three days of Intel writes had to be merged forward.
+**Cause:** the app's DSN still points at the retired `ep-tiny-lab-akrddwgy` endpoint in the old Neon organization. That project (`morning-fire-74787570`) has since been deleted, so the same mistake now fails outright with a password error (verified 2026-09-28). `brick-intel` and `brick-watch` did this until 2026-09-11, and three days of Intel writes had to be merged forward.
 
 **Fix:** repoint the secret at `ep-hidden-union-aromj80p` with the app's scoped role.
 

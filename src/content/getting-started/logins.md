@@ -57,11 +57,11 @@ Direct database access uses Neon roles and connection strings. Each app connects
 
 ### Connection Strings
 
-**Base endpoint:** `ep-tiny-lab-akrddwgy.us-west-2.aws.neon.tech`
+**Base endpoint:** `ep-hidden-union-aromj80p.c-4.us-west-2.aws.neon.tech` (direct). The pooled host is `ep-hidden-union-aromj80p-pooler.c-4.us-west-2.aws.neon.tech`. Verified 2026-09-28.
 
 **Format:**
 ```
-postgresql://ROLE:PASSWORD@ep-tiny-lab-akrddwgy.us-west-2.aws.neon.tech/neondb?sslmode=require
+postgresql://ROLE:PASSWORD@ep-hidden-union-aromj80p.c-4.us-west-2.aws.neon.tech/neondb?sslmode=require
 ```
 
 ### Database Roles (Least Privilege)
@@ -79,7 +79,7 @@ Grants alone are not always enough. Several tables have Row-Level Security enabl
 
 ### Getting a Connection String
 
-Pull the DSN from the Neon console (project `morning-fire-74787570`, **Connect**) and put it in your local `.env.local`. It returns the pooled string; remove `-pooler` from the host for the direct string. Deployed Workers hold it as a secret; `npx wrangler secret list --name <worker>` confirms the name is set but never shows the value.
+Pull the DSN from the Neon console (project `lfiq-command`, **Connect**) or the Neon MCP, `get_connection_string(project_id='nameless-paper-46385107', role_name=...)`, and put it in your local `.env.local`. It returns the pooled string; remove `-pooler` from the host for the direct string. Deployed Workers hold it as a secret; `npx wrangler secret list --name <worker>` confirms the name is set but never shows the value.
 
 Use the pooled `DATABASE_URL` at runtime. `DATABASE_URL_UNPOOLED` is for migration tooling only, and in at least one project it is stored wrapped in literal quotes, so code that reads it has to strip them.
 
