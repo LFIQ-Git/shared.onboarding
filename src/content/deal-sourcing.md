@@ -108,7 +108,7 @@ Candidate status values are constrained in the schema: `open`, `watch`, `pursuin
 
 ## Schedule
 
-All Stacks crons are in `brick.stacks/vercel.json`, UTC.
+All Stacks crons are dispatched by the `scheduled()` handler in `brick.stacks/worker/index.ts` on the `brick-stacks` Worker, UTC. The `CRON_ROUTES` map in that file ties each expression to a route. `CRON_DISPATCH_ENABLED = "true"` in `wrangler.toml` is the on switch; `"false"` stops every job.
 
 | Route | Cron | Purpose |
 |-------|------|---------|
@@ -118,10 +118,13 @@ All Stacks crons are in `brick.stacks/vercel.json`, UTC.
 | `/api/cron/attribute-competitors` | `0 9 * * *` | Competitor attribution |
 | `/api/cron/sfbiz-attribute` | `30 9 * * *` | Business registration attribution |
 | `/api/cron/manager-scrape` | `0 10 * * *` | Property manager discovery |
+| `/api/cron/dbi-mentions` | `30 10 * * *` | Manager attribution from DBI complaint mentions, for parcels no other source claimed |
 | `/api/cron/monitor` | `45 10 * * *` | Monitoring diff |
 | `/api/cron/competitor-study` | `45 11 * * 1` | Weekly competitor study |
 
 ## Verification
+
+`stacks.lfiq.app` sits behind Cloudflare Access, so a call from outside also needs an Access service token (`CF-Access-Client-Id` and `CF-Access-Client-Secret` headers).
 
 ```bash
 # Re-score the loaded universe without re-pulling any source

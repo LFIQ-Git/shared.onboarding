@@ -13,6 +13,7 @@ One-page quick reference for getting productive in the LFIQ stack. Complete your
 | Registry | https://registry.lfiq.app | Deal tracking, opportunities, activities |
 | Stacks | https://stacks.lfiq.app | SF sourcing pipeline, dossier, PropertyRadar |
 | Sticks | https://sticks.lfiq.app | Personal AI assistant |
+| Watch | https://watch.lfiq.app | SF parcel watch: alerts on new DBI complaints and notices of violation |
 | Marketing Site | https://leftfieldiq.com | Product overview, investor materials |
 
 Every internal app is a subdomain of `lfiq.app`. The full list of primary domains the company owns, where each one is registered, and which ones are broken is on [Domains](/docs/domains).
@@ -21,50 +22,48 @@ Every internal app is a subdomain of `lfiq.app`. The full list of primary domain
 
 | Item | Value/Location | Notes |
 |------|--------|-------|
-| **Neon Database** | Endpoint: `ep-tiny-lab-akrddwgy.us-west-2.neon.tech` | One database, `neondb`. Schemas: portfolio, items, gdm, market, registry, stacks, collect, repair, public, semantic |
-| **Clerk Auth** | Sign in at `https://<app>.lfiq.app/login` | Social login only, Google or Microsoft. The route is `/login`, not `/sign-in`. Sticks is the exception and runs NextAuth |
-| **GCP Projects** | `brickston-v2`, `graphic-iridium-485814-b2` | Both wound down. Billing disabled on both, so Cloud Scheduler and Cloud Run jobs cannot fire |
-| **Vercel Team** | LFIQ (`team_N2zeS1e4gX0Wljbp0aKwkzxb`) | Hub, Intel, Command and its sub-apps, Keystone, Registry, Stacks, Sticks |
-| **Fly.io** | `brickston-backend`, `brick-cron`, `brick-mcp-server`, `pkm-mcp` | Command backend, batch jobs, MCP servers |
-| **Secrets** | Vercel environment, Fly app secrets, macOS Keychain | Names only in docs. Values never in a repo |
+| **Neon Database** | Project `morning-fire-74787570`, endpoint `ep-tiny-lab-akrddwgy` | One database, `neondb`. Schemas: portfolio, items, gdm, market, registry, stacks, collect, repair, public, semantic |
+| **Auth** | Cloudflare Access on every `<app>.lfiq.app` host | Opening any app redirects to the `lfiq.cloudflareaccess.com` login. Clerk was retired 2026-09-17. App access comes from your row in `items.auth_allowed_users` |
+| **Cloudflare** | Account `Left Field` | Workers for Hub, Intel, Command and its sub-apps, Keystone, Registry, Stacks, Sticks, Watch, and `brick-cron-http` |
+| **Fly.io** | `brickston-backend`, `brick-cron`, `brick-mcp-server`, `pkm-mcp`, `brick-cron-monitor` | Command backend, batch jobs, MCP servers, cron dead-man's-switch. `brick-gdm` and `brick-leasing-etl` are suspended apps whose images `brick-cron` launches as one-off machines |
+| **Secrets** | Worker secrets (`wrangler secret put`), Fly app secrets, macOS Keychain | Names only in docs. Values never in a repo |
 
 ## Local Setup (60 seconds)
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/LFIQ-Git/brick.apps.git
-cd brick.apps
-mise install
+# 1. Clone one app repo and install. Each app is its own repo in LFIQ-Git.
+git clone https://github.com/LFIQ-Git/brick.intel.git
+cd brick.intel
 npm ci
 
-# 2. Link to Vercel and pull environment variables
-vercel link --project hub
-vercel env pull
-# This is the whole secret story for local dev. Vercel env is where the values live.
+# 2. Local secrets: copy the names-only template and fill it in
+cp .dev.vars.example .dev.vars
+# DATABASE_URL comes from Neon (console Connect, or the Neon MCP get_connection_string
+# for project morning-fire-74787570). Never commit .dev.vars.
 
 # 3. Verify local development
 npm run dev
-# Visit http://localhost:3000 (or 3001, 3002, etc. depending on app)
+# Visit http://localhost:3000 (Hub runs on 3040)
 
-# 4. Run health check
+# 4. Run health check (Intel, Keystone and Registry have /api/health)
 curl http://localhost:3000/api/health
 ```
 
 ## Key Logins & Credentials
 
-### Clerk Login
-- **Provider:** Google or Microsoft only. No password login anywhere in the fleet
-- **Sign-up:** Restricted to an allowlist of company domains. You must be invited before you can sign in
-- **Access:** Clerk org role decides which apps you see. `org:admin` gets everything, `org:member` gets Command
+### Cloudflare Access Login
+- **Perimeter:** Every internal app host redirects to the Cloudflare Access login at `lfiq.cloudflareaccess.com`
+- **Grant:** You need an Access policy that admits you and a row in `items.auth_allowed_users`. Ask the platform lead
+- **Access:** The row's `apps` array and `is_admin` flag decide which apps you see
 
 ### Neon Database Access
-- **Endpoint:** `ep-tiny-lab-akrddwgy.us-west-2.neon.tech`
-- **Port:** 5432. There is no local proxy, Cloud SQL was deleted
+- **Endpoint:** `ep-tiny-lab-akrddwgy` (project `morning-fire-74787570`)
+- **Port:** 5432. There is no local proxy
 - **Auth:** Neon roles (intel, command, pkm, gdm_extractor, market_scraper)
-- **How to connect:** Use the `DATABASE_URL` pulled from Vercel, not raw credentials
+- **How to connect:** Pull the connection string from Neon (console Connect, or the Neon MCP `get_connection_string`). It returns the pooled string
 
 ### Anthropic API (Claude)
-- **Key name:** `ANTHROPIC_API_KEY`, set in Vercel environment and Fly app secrets
+- **Key name:** `ANTHROPIC_API_KEY` in Worker secrets; `BRICKSTON_AI_ANTHROPIC_API_KEY` on Fly `brickston-backend`
 - **Apps using it:** Hub (chat), Keystone (automation)
 - **Rate limits:** Standard Claude API tiers
 
@@ -84,11 +83,8 @@ curl http://localhost:3000/api/health
 **Symptom:** App refuses to start, complains about missing NEXT_PUBLIC_* or DATABASE_URL  
 **Fix:**  
 ```bash
-# Pull latest from Vercel
-vercel env pull
-
-# Confirm the app is linked to the right project first
-cat .vercel/project.json
+# Confirm .dev.vars exists and every name in the template has a value
+diff <(grep -oE '^[A-Z_]+' .dev.vars.example | sort) <(grep -oE '^[A-Z_]+' .dev.vars | sort)
 
 # Then restart
 npm run dev
@@ -99,38 +95,33 @@ npm run dev
 **Fix:**  
 ```bash
 # Warm the connection pool with a dummy query
-psql -h ep-tiny-lab-akrddwgy.us-west-2.neon.tech -U intel neondb -c "SELECT 1;"
+psql "$DATABASE_URL" -c "SELECT 1;"
 
 # Then retry your app request
 ```
 
-### Issue 3: "Invalid Clerk claims" in logs
-**Symptom:** 403 errors, user cannot authenticate despite valid Clerk session  
+### Issue 3: Signed in through Access but the app refuses you
+**Symptom:** You clear the Cloudflare Access login, then the app sends you to `/login` or returns 403  
 **Fix:**  
-```bash
-# Clear browser cookies for the app domain and the Clerk domain
-# In DevTools > Application > Cookies > Delete __session
-
-# Log out and log back in via Clerk UI
-# Verify CLERK_SECRET_KEY matches the current Vercel value
-vercel env pull
+```sql
+-- Your address needs a row, and apps must include the app you are opening
+SELECT email, apps, is_admin FROM items.auth_allowed_users WHERE lower(email) = lower('<your email>');
 ```
-
-Note: production must use a `pk_live_` publishable key. A `pk_test_` key points at a throwaway development Clerk instance and will not recognize your account.
+Ask the platform lead to add the grant. The `apps` column holds BRICK app slugs and Command sub-app slugs together, so never rewrite it down to one set.
 
 ## Learning Path (5 steps)
 
-1. **Read the Architecture Overview** (10 min): Understand the 8-app family, 10 schemas, and data flow
-2. **Complete Local Setup** (20 min): Clone, install, link Vercel, pull environment variables
+1. **Read the Architecture Overview** (10 min): Understand the 9-app family, 10 schemas, and data flow
+2. **Complete Local Setup** (20 min): Clone, install, fill `.dev.vars`
 3. **Watch Hub Demo** (5 min): See the entry point in action
 4. **Explore Intel** (15 min): View the inbox, understand how data arrives from the 27 registered sources
-5. **Open a PR and Deploy** (15 min): Make a small change, push to a branch, deploy via Vercel
+5. **Open a PR and Deploy** (15 min): Make a small change, push to a branch, merge to `main` and Workers Builds deploys it
 
 ## Common Commands
 
 ```bash
-# View app logs (Vercel)
-vercel logs --follow
+# Stream live Worker logs
+npx wrangler tail brick-intel
 
 # Check Fly.io app status
 flyctl status --app=brickston-backend
@@ -141,10 +132,10 @@ npm run test
 # Start development server (interactive)
 npm run dev -- --port 3001
 
-# Deploy to staging (Vercel)
+# Push a branch for review
 git push origin feature/your-branch
 
-# Deploy to production (Vercel)
+# Deploy to production (Cloudflare Workers Builds)
 git push origin main  # triggers auto-deploy
 ```
 

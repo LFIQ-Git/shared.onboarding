@@ -24,34 +24,34 @@ Command is a comprehensive portfolio operating system:
 
 | Environment | URL | Status | Platform |
 |-------------|-----|--------|----------|
-| **Production** | https://command.lfiq.app | Live | Vercel (frontend) + Fly.io (backend) |
-| **Preview** | https://command-branch.lfiq.app | Auto-deploy on PR | Vercel |
-| **Local Dev** | http://localhost:3002 | Via `npm run dev` | Local machine |
+| **Production** | https://command.lfiq.app | Live | Cloudflare Worker `brick-command` (frontend) + Fly.io `brickston-backend` (backend) |
+| **Local Dev** | http://localhost:3000 | Via `npm run dev` at the repo root (`next dev` in `apps/web`) | Local machine |
 
 ## Tech Stack
 
 | Component | Tech | Notes |
 |-----------|------|-------|
-| **Frontend** | Next.js 15 monorepo | React 19, 8 npm workspaces under `apps/`: web, collect, leasing, repair, documents, utilities, payables, civic |
+| **Frontend** | Next.js 16 monorepo | React 19, 8 npm workspaces under `apps/`: web, collect, leasing, repair, documents, utilities, payables, civic |
 | **Language** | TypeScript | Full type coverage |
-| **Auth** | Clerk | `createBrickClerkGate(appKey)` from `packages/brick-middleware`, one gate per sub-app |
+| **Auth** | Cloudflare Access | `packages/brick-middleware` (`@brick/middleware`) verifies the Access JWT. Authorization is the `items.auth_allowed_users` row, checked on `/login` and at data-call time |
 | **Database** | Neon (portfolio, collect, repair schemas) | Direct + pooled connections |
-| **Backend API** | Fly.io (brickston-backend) | FastAPI, Neon access, GraphQL |
-| **GraphQL** | Fly.io | Schema defined in brickston-backend |
+| **Backend API** | Fly.io (brickston-backend) | FastAPI REST under `/api/v1/*`, Neon access |
 | **Jobs** | Fly `brick-cron` (supercronic) | Valuation, PBI sync, GDM extract, briefings, insight tagging |
-| **Deployment** | Vercel + Fly.io | Vercel auto-deploys on main; Fly is a manual deploy |
+| **Deployment** | Cloudflare Workers + Fly.io | One Worker per workspace; Fly is a manual deploy |
 
 ## Local Development
 
 ### Start the App
 
 ```bash
-cd /path/to/brick.apps/apps/command
+git clone https://github.com/LFIQ-Git/brick.command.git
+cd brick.command
+npm ci
 npm run dev
-# Runs on http://localhost:3002
+# Runs the web workspace on http://localhost:3000
 ```
 
-**Note:** Command is an npm-workspaces monorepo. Run `npm ci` at the repo root, never inside a workspace. The root lockfile is authoritative and a stray per-app lockfile will break the Vercel build.
+**Note:** Command is still an npm-workspaces monorepo. Run `npm ci` at the repo root, never inside a workspace. The root lockfile is authoritative.
 
 ### Sub-apps
 
@@ -66,7 +66,7 @@ None of the workspaces pin a port. Each runs `next dev`, which takes 3000 and in
 - **payables**: Accounts payable
 - **civic**: SF civic data surfaces
 
-Each workspace deploys to its own Vercel project with a distinct Root Directory, all from the one repo.
+Each workspace has its own `wrangler.jsonc` and deploys to its own Worker (`brick-command` for web, then `brick-collect`, `brick-leasing`, `brick-repair`, `brick-documents`, `brick-utilities`, `brick-payables`, `brick-civic`), all from the one repo. `npm run deploy:cloudflare` inside a workspace is the manual path.
 
 ### Environment Variables
 
@@ -74,23 +74,19 @@ Each workspace deploys to its own Vercel project with a distinct Root Directory,
 |----------|-----------|---------|
 | `DATABASE_URL` | Yes | Neon connection (portfolio schema, command role) |
 | `DATABASE_URL_UNPOOLED` | Yes | Neon direct, migration tooling only |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | Clerk publishable key. `BRICK_CLERK_PUBLISHABLE_KEY` is the fallback name |
-| `CLERK_SECRET_KEY` | Yes | Clerk secret key. `BRICK_CLERK_SECRET_KEY` is the fallback name |
-| `BRICK_CLERK_ORGANIZATION_ID` | Yes | Clerk org whose role decides app access |
+| `ITEMS_HUB_DATABASE_URL` | Yes | Neon connection for the `items.auth_allowed_users` lookup. Falls back to `DATABASE_URL` |
+| `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` | Prod | Set as vars in `apps/web/wrangler.jsonc` |
 | `BRICK_AUTH_DISABLED` | No | Local dev only. Set `1` or `true` to bypass the gate |
-| `BRICKSTON_BACKEND_URL` | Yes | Backend API base (Fly.io) |
+| `BRICKSTON_BACKEND_URL` | Yes | Backend API base. `https://brickston-backend.fly.dev` in `apps/web/wrangler.jsonc` |
 | `BRICKSTON_SCHEDULER_SECRET` | Yes | Shared secret for scheduler and report-import calls |
 | `COMMAND_REFRESH_SECRET` | Yes | Guards `/api/refresh`, the cache-invalidation hook |
 
-Pull from Vercel:
-```bash
-vercel env pull
-```
+Production secrets are Worker secrets. `npx wrangler secret list --name brick-command` lists the names; `npx wrangler secret put <NAME> --name brick-command` sets one.
 
 ## Backend: Fly.io brickston-backend
 
 Command's backend is a Python FastAPI application running on Fly.io. It provides:
-- GraphQL API (portfolio, properties, leases)
+- REST API under `/api/v1/*` (portfolio, properties, leases)
 - Neon database proxy
 - Rate limiting and caching
 - Authentication validation
@@ -126,7 +122,7 @@ flyctl logs --app=brickston-backend --limit=50
 
 ### Flow 1: Property Overview
 1. User navigates to command.lfiq.app/properties
-2. Frontend queries Fly.io GraphQL endpoint for all properties
+2. Frontend calls the `brickston-backend` REST API for all properties
 3. Results include: property ID, address, units, occupancy, net rent
 4. User clicks property → detailed view with rent roll, leases, maintenance
 
@@ -164,28 +160,27 @@ Command also reads `gdm.*` (Power BI Golden Data Model) and `market.*` (leasing 
 
 ### Issue 1: "Backend API timeout"
 **Symptom:** Property list takes 30+ seconds to load  
-**Cause:** Fly.io app sleeping, Neon connection timeout, or slow GraphQL query  
+**Cause:** Fly.io app sleeping, Neon connection timeout, or slow backend query  
 **Fix:**
 ```bash
 # Wake up Fly.io app
-curl https://brickston-backend.lfiq.app/health
+curl https://brickston-backend.fly.dev/health
 # Should respond with 200 OK
 
 # Check Fly.io status
 flyctl status --app=brickston-backend
 
 # Warm Neon connection
-psql -h ep-tiny-lab-akrddwgy.us-west-2.neon.tech \
-  -U command neondb -c "SELECT 1 FROM portfolio.properties LIMIT 1;"
+psql "$DATABASE_URL" -c "SELECT 1 FROM portfolio.properties LIMIT 1;"
 ```
 
 ### Issue 2: "Rent roll editor doesn't save changes"
 **Symptom:** Clicking "Save" shows loading state but nothing persists  
-**Cause:** GraphQL mutation failed, Neon RLS denied write, or session expired  
+**Cause:** The backend write failed, Neon RLS denied the write, or the Access session expired  
 **Fix:**
 ```bash
 # Check browser network tab (DevTools > Network)
-# Look for failed GraphQL mutation request
+# Look for the failed /api/v1 request
 # Verify response status and error message
 
 # If 403 Forbidden: user doesn't have write permission
@@ -240,22 +235,6 @@ WHERE l.move_out_date BETWEEN now() AND now() + interval '90 days'
 ORDER BY l.move_out_date ASC;
 ```
 
-### Task 3: Create a Delinquency Case
-```sql
-INSERT INTO collect.delinquency_cases (
-  unit_id, resident_id, status, 
-  amount_owed, days_past_due, 
-  created_at
-) VALUES (
-  $1, $2, 'open',
-  1500.00, 45,
-  now()
-);
-
--- Then notify collections team
--- (Usually done by trigger or application code)
-```
-
 ## Sub-app Guides
 
 Each sub-app within Command has specialized workflows:
@@ -275,8 +254,8 @@ See each sub-app's own documentation for detailed workflows.
 
 ## Related Documentation
 
-- **Architecture:** Fly.io backend, GraphQL API, database schema
+- **Architecture:** Fly.io backend, REST API, database schema
 - **Getting Started:** Setup, Logins, Install Tools
 - **Intel:** Observations feed into Command inbox
 - [Fly.io Backend](/docs/fly-io-backend)
-- [Clerk Authentication](/docs/clerk-auth)
+- [Cloudflare Access](/docs/access-auth)

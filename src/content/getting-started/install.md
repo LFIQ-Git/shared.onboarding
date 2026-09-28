@@ -8,14 +8,13 @@ Complete checklist of tools required to develop on the LFIQ platform. Install th
 |------|---------|---------------|------------------|
 | Claude Code | Desktop agent & CLI | App Store / claude.com | Latest |
 | GitHub CLI | Clone repos, manage PRs | Homebrew or download | 2.30+ |
-| Node.js | JavaScript runtime | mise | 20.x |
+| Node.js | JavaScript runtime | mise | 22.x |
 | Python | Automation, scripting | mise | 3.11.x |
 | npm | Package manager | Node.js included | 10.x+ |
-| Vercel CLI | Deploy, link projects | npm | 35.0+ |
+| Wrangler | Cloudflare Workers CLI | Repo devDependency, run with `npx` | 4.x |
 | Flyctl | Fly.io deployment | Homebrew | 0.2+ |
 | colima | Docker daemon, required for Fly builds | Homebrew | Latest |
 | mise | Version manager | Homebrew | Latest |
-| gcloud | GCP CLI, rarely needed | Google Cloud SDK | Latest |
 
 ## Claude Code (Recommended but Optional)
 
@@ -49,8 +48,8 @@ brew install gh
 
 ```bash
 # Download the latest macOS release
-curl -L https://github.com/cli/cli/releases/download/v2.41.0/gh_2.41.0_macOS_arm64.tar.gz -o gh.tar.gz
-tar xzf gh.tar.gz
+curl -L https://github.com/cli/cli/releases/download/v2.41.0/gh_2.41.0_macOS_arm64.zip -o gh.zip
+unzip gh.zip
 sudo mv gh_2.41.0_macOS_arm64/bin/gh /usr/local/bin/
 ```
 
@@ -89,20 +88,22 @@ mise --version
 # Expected: mise 2024.x.x
 ```
 
-### Installation: Node.js 20 & Python 3.11
+### Installation: Node.js 22 & Python 3.11
 
-Once mise is installed, navigate to the brick.apps monorepo and run:
+Once mise is installed, go to the `brick.command` checkout, which carries the `mise.toml` pin, and run:
 
 ```bash
-cd /path/to/brick.apps
+cd /path/to/brick.command
 mise install
-# Reads .mise.toml, installs Node 20 + Python 3.11
+# Reads mise.toml, installs Node 22 + Python 3.11
 ```
+
+Node 22 is the floor across the fleet. Hub, Command, Keystone and Stacks declare `node >=22` in `package.json` engines, and `brick.command/.nvmrc` is `22`.
 
 ### Verification
 
 ```bash
-node --version    # v20.x.x
+node --version    # v22.x.x
 npm --version     # 10.x.x
 python --version  # Python 3.11.x
 ```
@@ -131,28 +132,23 @@ npm config set legacy-peer-deps true
 # Allows some dependency conflicts to be ignored
 ```
 
-## Vercel CLI
+## Wrangler (Cloudflare Workers CLI)
 
-Vercel CLI links your local checkout to Vercel projects and pulls environment variables.
-
-### Installation
-
-```bash
-npm install -g vercel
-```
+Every web app runs as a Cloudflare Worker. Wrangler 4 is a devDependency in each app repo, so there is no global install. Run it through `npx` from inside the app directory after `npm ci`.
 
 ### Verification
 
 ```bash
-vercel --version
-# Expected: Vercel 35.0.0 or later
+npx wrangler --version
+# Expected: 4.x
 ```
 
 ### Post-Installation
 
 ```bash
-vercel login
-# Browser opens, authenticate with your GitHub account (via Vercel)
+npx wrangler login
+# Browser opens, authenticate with your Cloudflare account
+npx wrangler whoami
 ```
 
 ## Flyctl (for Fly.io)
@@ -204,31 +200,7 @@ colima start
 docker info | head -5
 ```
 
-You do not need a local Postgres. Every app connects straight to Neon. Cloud SQL was deleted, so there is no proxy to run and nothing listens on 5433.
-
-## gcloud (Google Cloud SDK)
-
-gcloud is the CLI for Google Cloud Platform. **You will rarely need it.** Billing is disabled on the `brickston-v2` project as part of a wind-down, which means the Cloud Scheduler API refuses every call. Application secrets live in Vercel environment settings, Fly app secrets, and the macOS Keychain, not in a GCP console you have to authenticate against. Install it only if you are working on one of the residual GCP workloads. See [GCP Cloud Run](/docs/gcp-cloud-run).
-
-### Installation via Homebrew
-
-```bash
-brew install --cask google-cloud-sdk
-```
-
-### Verification
-
-```bash
-gcloud --version
-# Expected: Google Cloud SDK version X.X.X
-```
-
-### Post-Installation
-
-```bash
-gcloud auth login --launch-browser
-# The out-of-band flow is deprecated and will fail. Use --launch-browser.
-```
+You do not need a local Postgres. Every app connects straight to Neon, so there is no proxy to run and nothing listens on 5433.
 
 ## Text Editor / IDE (Your Choice)
 
@@ -289,8 +261,8 @@ python --version
 # 4. npm
 npm --version
 
-# 5. Vercel CLI
-vercel --version
+# 5. Wrangler (run inside an app repo after npm ci)
+npx wrangler --version
 
 # 6. Flyctl
 flyctl version
@@ -301,8 +273,6 @@ colima version
 # 8. mise
 mise --version
 
-# 9. gcloud (only if you work on the residual GCP workloads)
-gcloud --version
 ```
 
 All outputs should show version numbers (no "command not found" errors).
@@ -348,6 +318,6 @@ docker info | head -5
 
 ## Next Steps
 
-- Run the **Setup** guide to clone the monorepo and verify everything works
-- Read the **Logins** guide for Clerk, GCP, and other authentication details
+- Run the **Setup** guide to clone the app repos and verify everything works
+- Read the **Logins** guide for Cloudflare Access, Fly, and other authentication details
 - Pick an app from the **Apps** section and start developing

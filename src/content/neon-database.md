@@ -1,43 +1,50 @@
 # Neon Database
 
-Every LFIQ application reads and writes the same Neon Postgres database. There is one database, `neondb`, and the apps are separated by schema rather than by database. Understanding the schema map and the role model is the fastest way to stop guessing where data lives.
+Every BRICK application reads and writes the same Neon Postgres database, `neondb` in the Neon project `lfiq-command`. The apps are separated by schema rather than by database. Understanding the schema map and the role model is the fastest way to stop guessing where data lives.
 
 ## The one-database model
 
-The three-database model was retired in the 2026-05-17/18 consolidation. Anything that tells you Command, Intel, and leasing each have their own Neon database is out of date, as is any reference to Cloud SQL. Cloud SQL is gone.
+The three-database model was retired in the 2026-05-17/18 consolidation. Anything that tells you Command, Intel, and leasing each have their own Neon database is out of date.
 
 | Property | Value |
 |----------|-------|
-| Neon project name | `neon-claret-umbrella` |
-| Neon project ID | `morning-fire-74787570` |
-| Endpoint ID | `ep-tiny-lab-akrddwgy` |
+| Neon organization | `LFIQ - Neon` (`org-wandering-mode-53686477`) |
+| Neon project name | `lfiq-command` |
+| Neon project ID | `nameless-paper-46385107` |
+| Branch | `main` (`br-muddy-butterfly-ara8m5xa`); a `ci-tests` branch also exists |
+| Endpoint ID | `ep-hidden-union-aromj80p` |
 | Region | AWS `us-west-2` |
-| Database | `neondb` |
-| Direct host | `ep-tiny-lab-akrddwgy.c-3.us-west-2.aws.neon.tech` |
-| Pooled host | `ep-tiny-lab-akrddwgy-pooler.c-3.us-west-2.aws.neon.tech` |
+| Postgres | 17 |
+| Databases | `neondb` (every BRICK app), `healthchecks` (`brick-cron-monitor` only) |
+| Direct host | `ep-hidden-union-aromj80p.c-4.us-west-2.aws.neon.tech` |
+| Pooled host | `ep-hidden-union-aromj80p-pooler.c-4.us-west-2.aws.neon.tech` |
+
+The same organization holds two more projects, `lfiq-apps` (`rapid-voice-40730355`) and `lfiq-home` (`delicate-smoke-15614378`), both in AWS `us-east-1`. The BRICK apps do not use them.
+
+The project moved on 2026-09-07. The old project, `neon-claret-umbrella` (`morning-fire-74787570`, endpoint `ep-tiny-lab-akrddwgy`), sits in a different Neon organization that the Neon MCP cannot read. Workers still pointed at it were repointed and their rows merged forward on 2026-09-11. Some configs and repo notes still name the old endpoint, including the `DB_HOST` on `brick-cron-monitor` and the `CLAUDE.md` files for `brick.stacks`, `brick.registry` and `lfi.home`. Treat any `ep-tiny-lab-akrddwgy` reference as stale until someone confirms otherwise.
 
 Cross-schema joins are legal and used in production. Command's collections module joins `gdm.artenant` to `gdm.tenant`; Command's GDM read path queries the `gdm` schema from an app that otherwise lives in `portfolio`. Write the join, it is one database.
 
 ## Schema map
 
-| Schema | Owner app | Holds | Table count |
+| Schema | Owner app | Holds | Tables (2026-09-27) |
 |--------|-----------|-------|-------------|
-| `items` | Intel | `inbox_items`, `tasks`, `commitments`, `decisions`, `entities`, `sources`, source-health materialized views | 34 |
+| `items` | Intel | `inbox_items`, `tasks`, `commitments`, `decisions`, `entities`, `sources`, source-health materialized views | 49 |
 | `gdm` | GDM extractor | Power BI Golden Data Model landing tables (`is_actuals`, `is_accttree`, `property`, `unit`, `artenant`, `tenant`, and the rest) | 72 |
-| `portfolio` | Command | Property star schema: `properties`, `units`, `dim_*`, `fact_*`, `financials`, `mv_property_metrics`, `mv_portfolio_summary` | 93 |
-| `market` | Leasing and competitor scrapers | `listings_current`, `cl_ads`, `sf_addresses`, `sf_parcels`, `etl_runs`, competitive-position views | 26 |
-| `public` | Keystone (PKM) | `daily_briefing`, `agent_feed`, `agent_runs`, `agent_actions`, plus the shared extensions | 28 |
+| `portfolio` | Command | Property star schema: `properties`, `units`, `dim_*`, `fact_*`, `financials`, `mv_property_metrics`, `mv_portfolio_summary` | 141 |
+| `market` | Leasing and competitor scrapers | `listings_current`, `cl_ads`, `sf_addresses`, `sf_parcels`, `etl_runs`, competitive-position views | 28 |
+| `public` | Keystone (PKM) | `daily_briefing`, `agent_feed`, `agent_runs`, `agent_actions`, plus the shared extensions | 39 |
 | `collect` | Command collections | `ar_snapshot`, `collection_month`, `collection_velocity`, `snapshot_run`, resident workflow tables | 12 |
-| `repair` | Command repair | `wo_dispatch`, `dispatch_events`, `wo_costs`, `wo_invoices`, `wo_photos`, `wo_surveys`, `technicians` | 7 |
-| `registry` | Registry | `deals`, `deal_parties`, `deal_events`, `deal_documents`, `loan_maturities`, `compliance_events` | 16 |
-| `stacks` | Stacks | `parcels`, `signals`, `candidates`, `source_runs`, keyed on APN | ~8 |
-| `semantic` | Brick semantic index | `index_records`, `index_runs`, `query_events`, `sources` | 4 |
+| `repair` | Command repair | `wo_dispatch`, `dispatch_events`, `wo_costs`, `wo_invoices`, `wo_photos`, `wo_surveys`, `technicians` | 10 |
+| `registry` | Registry | `deals`, `deal_parties`, `deal_events`, `deal_documents`, `loan_maturities`, `compliance_events` | 20 |
+| `stacks` | Stacks | `parcels`, `signals`, `candidates`, `source_runs`, keyed on APN | 25 |
+| `semantic` | Brick semantic index | `index_records`, `index_runs`, `query_events`, `sources` | 5 |
 | `neon_auth` | Neon Auth (Stack Auth) | Managed identity tables. Apps never run DDL here | 9 |
 | `drizzle` | Tooling | `__drizzle_migrations`, the legacy Drizzle journal, frozen after migration 0005 | 1 |
 
-The `auth` and `pgrst` schemas exist as empty scaffolding from the Neon Data API integration. No application data lives in them.
+Five more schemas hold tables: `lfi` (98, owned by `lfi.home`), `civic` (24, used by `brick-watch` and the civic app), `facts` (7), `scores` (5) and `ops` (1). The `auth` schema exists as empty scaffolding from the Neon Data API integration. No application data lives in it.
 
-Postgres extensions (`vector`, `pg_trgm`, `btree_gin`, `fuzzystrmatch`, `pgcrypto`) are installed in `public`, which is why `public` stays on every connection's `search_path`.
+Postgres extensions (`vector`, `pg_trgm`, `btree_gin`, `fuzzystrmatch`, `pgcrypto`, `pg_stat_statements`, `pg_session_jwt`) are installed in `public`, which is why `public` stays on every connection's `search_path`.
 
 ## Roles
 
@@ -48,15 +55,17 @@ Postgres extensions (`vector`, `pg_trgm`, `btree_gin`, `fuzzystrmatch`, `pgcrypt
 | `command` | Command backend | Read/write on `portfolio`, `collect`, `repair`; read on `market`, `gdm`, `items` | No |
 | `pkm` | Keystone runtime, MCP servers | Read/write on `public` and the PKM-owned `items` tables | No |
 
-Two things to know before you assume the role model is airtight. First, per-app role enforcement is partially deferred: the `command`, `gdm_extractor`, and `market_scraper` roles are specified but several workloads still connect on `intel` or `neondb_owner`. Second, row-level security is not enabled. Data ownership is enforced in the application layer through `dataset_scope` (`individual` / `common` / `admin`) plus `owner_email`, not by the database. Do not assume a query is scoped for you.
+More scoped roles exist than this table lists: `intel_v2`, `registry`, `stacks`, `sticks`, `civic`, `gdm_extractor`, `market_scraper`, `lfi_app`, `lfi_invoice`, `lfiq_home`, `healthchecks` and others. `brick-intel` connects as `intel_v2` and `brick-watch` as `civic` since the 2026-09-11 repoint.
+
+Two things to know before you assume the role model is airtight. First, per-app role enforcement is partially deferred: the `command`, `gdm_extractor`, and `market_scraper` roles are specified but several workloads still connect on `intel` or `neondb_owner`. Second, row-level security is enabled on 22 of the 39 tables in `public` and on no table in any other schema (checked 2026-09-27). Outside those tables, data ownership is enforced in the application layer through `dataset_scope` (`individual` / `common` / `admin`) plus `owner_email`, not by the database. Do not assume a query is scoped for you.
 
 Isolation between apps in practice comes from `search_path`, set on every connection acquire, not from role grants.
 
 ## Connection strings
 
-Secrets live in GCP Secret Manager in project `brickston-v2` and in the macOS Keychain under `com.justinsato.pkm.*`. Never paste a DSN into a ticket, a commit, or a chat.
+Connection strings come from Neon. They are stored as Worker secrets on Cloudflare and as `flyctl secrets` on Fly, never in a repo. Never paste a DSN into a ticket, a commit, or a chat.
 
-| Env var | Host type | Secret name | Used by |
+| Env var | Host type | Label in `data-connections.md` | Used by |
 |---------|-----------|-------------|---------|
 | `DATABASE_URL` | Pooled | `items-hub-database-url` | Intel, Keystone, Registry, Stacks at runtime |
 | `DATABASE_URL_UNPOOLED` | Direct | `intel-neon-database-url` | drizzle-kit, migration runners, `psql` sessions |
@@ -64,25 +73,17 @@ Secrets live in GCP Secret Manager in project `brickston-v2` and in the macOS Ke
 | `BRICKSTON_ITEMS_HUB_DATABASE_URL` | Pooled | `items-hub-database-url` | Command backend reading `items` and `gdm` |
 | `BRICKSTON_LEASING_INTEL_DATABASE_URL` | Pooled | `intel-neon-database-url` | Command backend reading `market` |
 | `BRICKSTON_KEYSTONE_DATABASE_URL` | Pooled | `pkm-database-url` | Command writing to `public.agent_*` |
-| `LEASING_DATABASE_URL_UNPOOLED` | Direct | GitHub Actions repo secret | Leasing and competitor scrapers writing `market` |
+| `LEASING_DATABASE_URL_UNPOOLED` | Direct | Fly secret on `brick-leasing-etl` | Leasing and competitor scrapers writing `market` |
 
-Dead secret names you will still find in old docs and should not use: `brickston-database-url` (Cloud SQL), `brickston-database-url-neon` (the retired standalone `brickston` Neon database).
+The labels are old secret names kept only so the two docs line up. Pull the actual string for the role you need from Neon. Dead names you will still find in old docs and should not use: `brickston-database-url` (the retired pre-Neon database), `brickston-database-url-neon` (the retired standalone `brickston` Neon database).
 
-Pull a secret:
+Pull a connection string from Neon, either through the Neon MCP or the Neon console (project `lfiq-command`, **Connect**):
 
-```bash
-gcloud auth login --launch-browser
-gcloud config set project brickston-v2
-gcloud secrets versions access latest \
-  --secret=items-hub-database-url \
-  --project=brickston-v2
+```text
+get_connection_string(project_id='nameless-paper-46385107', roleName='command')
 ```
 
-Or from the Keychain on a machine that already has it:
-
-```bash
-security find-generic-password -s com.justinsato.pkm.command-database-url-direct -w
-```
+That returns the pooled string. Remove `-pooler` from the host for the direct string. The Keychain entries older notes name for DSNs (`com.justinsato.pkm.command-database-url-direct` and its siblings) do not exist.
 
 ## Pooled versus unpooled
 
@@ -91,9 +92,9 @@ The pooled host has `-pooler` in the hostname. The direct host does not. Pick by
 | Use pooled for | Use direct for |
 |----------------|----------------|
 | Application runtime, serverless functions, short queries | Migrations and any DDL |
-| Anything running on Vercel, where connection count is unpredictable | `CREATE INDEX CONCURRENTLY`, which cannot run inside a pooled transaction |
+| Anything running on Cloudflare Workers, where connection count is unpredictable | `CREATE INDEX CONCURRENTLY`, which cannot run inside a pooled transaction |
 | High-frequency reads from a long-lived pool | Long transactions, bulk loads, one-shot scripts |
-| Anything where you would otherwise exhaust the ~250 direct connection budget | Interactive `psql` |
+| Anything where you would otherwise exhaust the direct connection limit (`max_connections` read 901 on 2026-09-27; it scales with compute size) | Interactive `psql` |
 
 Failure modes worth recognizing:
 
@@ -133,7 +134,7 @@ psql "$DATABASE_URL" -c "
   limit 20;"
 ```
 
-Ports 5433 and 5434 appear in older setup notes. Both are local Docker Postgres instances used for throwaway testing, not Neon. Neon is always reached over TLS on 5432 at the hostnames above.
+Ports 5433 and 5434 appear in older setup notes. Nothing on the Mac listens on 5433 now, and neither port is Neon. The local Postgres containers that exist belong to the Back9 dev stack and home automation. Neon is always reached over TLS on 5432 at the hostnames above.
 
 ## Running migrations
 
@@ -152,7 +153,7 @@ Migrations are hand-written SQL in every repo. The Drizzle journal in the `drizz
 Apply a single Command migration against production, without echoing the DSN:
 
 ```bash
-DSN=$(security find-generic-password -s com.justinsato.pkm.command-database-url-direct -w)
+# DSN holds the direct lfiq-command string for the owner role, pulled from Neon
 psql "$DSN" -v ON_ERROR_STOP=1 -f backend/database/migrations/053_example.sql
 ```
 
@@ -187,4 +188,4 @@ select count(*) from items.tasks where jsonb_typeof(metadata) <> 'object';
 - [Neon Debugging](/docs/neon-debugging) for connection and query troubleshooting
 - [Fly.io Backend](/docs/fly-io-backend) for the jobs that write `gdm` and `portfolio`
 - [Getting Started: Setup](/docs/getting-started/setup) for first-run credential setup
-- Ask Justin before running anything that mutates production data. There is no staging copy of `neondb`.
+- Ask Justin before running anything that mutates production data. The `ci-tests` branch exists for tests; there is no staging copy of `neondb`.

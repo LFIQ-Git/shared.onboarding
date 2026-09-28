@@ -63,7 +63,7 @@ Until this lands, the property exists in Command but has no financials, no rent 
 The authoritative source is the SF Planning Property Information Map, a public no-auth ArcGIS service that returns a parcel's official street and address range, so it handles ranges and corner lots natively. It returns nothing for a non-SF address, which is the correct exclusion for the East Bay assets.
 
 ```bash
-cd /Volumes/minibase-ssd/justinsato/Projects/ACTIVE/brick.stacks
+cd /Volumes/minibase/justinsato/Projects/ACTIVE/apps/brick/brick.stacks
 
 # Resolve owned properties to APNs (read-only, produces a map file for review)
 node scripts/sfpim-resolve.mjs
@@ -86,7 +86,7 @@ Once the link exists, civic records attach by parcel rather than by radius. The 
 
 ### Stage 5: Push the property into Intel
 
-Intel keeps a local cache of the roster at `items.property_lookup` so it can render property names without calling the Command backend. It is populated by `POST /api/ingest/property-lookup`, an idempotent upsert, called by the insight-tagger job (currently every 15 minutes on Fly) and on demand after a roster mutation.
+Intel keeps a local cache of the roster at `items.property_lookup` so it can render property names without calling the Command backend. It is populated by `POST /api/ingest/property-lookup`, an idempotent upsert, called by the insight-tagger job (currently every 30 minutes on Fly `brick-cron`) and on demand after a roster mutation.
 
 | Column | Note |
 |--------|------|

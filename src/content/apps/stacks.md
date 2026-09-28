@@ -22,49 +22,44 @@ Stacks focuses on SF multifamily deal sourcing:
 
 | Environment | URL | Status | Platform |
 |-------------|-----|--------|----------|
-| **Production** | https://stacks.lfiq.app | Live | Vercel |
-| **Preview** | https://stacks-branch.lfiq.app | Auto-deploy on PR | Vercel |
-| **Local Dev** | http://localhost:3005 | Via `npm run dev` | Local machine |
+| **Production** | https://stacks.lfiq.app | Live, Workers Builds deploys on push to main | Cloudflare Worker `brick-stacks` |
+| **Local Dev** | http://localhost:3000 | Via `npm run dev` (`next dev`) | Local machine |
 
 ## Tech Stack
 
 | Component | Tech | Notes |
 |-----------|------|-------|
-| **Framework** | Next.js 15 | React 19, App Router |
+| **Framework** | Next.js 16 | React 19, App Router, built for Workers with vinext |
 | **Language** | TypeScript | Full type coverage |
-| **Auth** | Clerk | Shared fleet instance. Production must use a `pk_live_` key. See [Clerk Authentication](/docs/clerk-auth) |
-| **Database** | Neon (stacks schema) | Properties, dossiers, market data. Keyed on APN |
+| **Auth** | Cloudflare Access | Clerk was removed 2026-09-15. The `stacks` grant in `items.auth_allowed_users` is checked on `/login` and in `requireOperator` |
+| **Database** | Neon (stacks schema) | Parcels, signals, candidates, source runs. Keyed on APN |
 | **Property Data** | PropertyRadar API | SF property records, distress indicators. Gated paid adapter, excluded from cron |
-| **Maps** | Mapillary (optional) | Street-level imagery |
-| **Deployment** | Vercel | Auto-deploy on main |
+| **Maps** | Mapillary (optional) | Street-level imagery, via `MAPILLARY_TOKEN` |
+| **Deployment** | Cloudflare Workers | Workers Builds on push to main |
 
 ## Local Development
 
 ### Start the App
 
 ```bash
-cd /path/to/brick.apps/apps/stacks
+git clone https://github.com/LFIQ-Git/brick.stacks.git
+cd brick.stacks
 npm run dev
-# Runs on http://localhost:3005
+# Runs on http://localhost:3000
 ```
 
 ### Environment Variables
 
 | Variable | Required? | Purpose |
 |----------|-----------|---------|
-| `BRICK_CLERK_PUBLISHABLE_KEY` | Yes | Clerk publishable key. `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` also works |
-| `BRICK_CLERK_SECRET_KEY` | Yes | Clerk secret key. `CLERK_SECRET_KEY` also works |
-| `BRICK_AUTH_DISABLED` | No | Local dev only. Stacks ships with the gate enabled, so local API routes 401 against production keys until you set this |
+| `BRICK_AUTH_DISABLED` | No | Local dev only. Set `true` in `.env.local` to skip the Access gate |
 | `DATABASE_URL` | Yes | Neon connection (stacks schema) |
-| `PROPERTYRADAR_API_KEY` | Yes | PropertyRadar data access. Billing-gated |
-| `NEXT_PUBLIC_MAPILLARY_API_KEY` | No | Street imagery (optional) |
+| `ITEMS_HUB_DATABASE_URL` | Prod | Neon connection for the `items.auth_allowed_users` allowlist |
+| `PROPERTYRADAR_API_TOKEN` | No | PropertyRadar data access. The adapter no-ops unless `PROPERTYRADAR_PURCHASE=1` |
+| `MAPILLARY_TOKEN` | No | Street imagery (optional) |
+| `CRON_SECRET` | Prod | Authorizes the cron routes |
 
-Stacks refuses to build for production unless the publishable key starts with `pk_live_`.
-
-Pull from Vercel:
-```bash
-vercel env pull
-```
+For local dev, `.dev.vars.example` lists the Worker variables. Production secrets are Worker secrets: `npx wrangler secret list --name brick-stacks` lists the names, `npx wrangler secret put <NAME> --name brick-stacks` sets one.
 
 ## Key Features
 
@@ -108,7 +103,7 @@ Each property has a detailed dossier including:
    - Cap rate: 5-7%
    - Distress score: > 70
    - Location: SF
-3. Submit → Query PropertyRadar API + Neon stacks schema
+3. Submit → Query the Neon stacks schema
 4. Results displayed: address, estimated value, distress score, recent sales
 5. User clicks property → view dossier
 
@@ -127,23 +122,21 @@ Each property has a detailed dossier including:
    - Open in Google Maps
    - Generate report
 
-### Flow 3: Create Sourcing Alert
-1. User saves a search (e.g., "Cap rate 5-7%, SF, distress > 70")
-2. Alert runs nightly, checks PropertyRadar for new matches
-3. New properties meeting criteria are added to "Alerts" tab
-4. User notified (optional: Slack, email)
-5. User reviews and moves promising properties to "Tracked"
+### Flow 3: Nightly Sourcing Jobs
+`scheduled()` in `worker/index.ts` maps each cron schedule to a job (rent-board, ingest, owner-enrich and others). `CRON_DISPATCH_ENABLED` in `wrangler.toml` is the switch. PropertyRadar is a paid adapter and is not part of the nightly run.
 
 ## Database Schema
 
-The `stacks` schema contains:
+The `stacks` schema is keyed on APN. Core tables:
 
 | Table | Purpose |
 |-------|---------|
-| **properties** | SF properties synced from PropertyRadar |
-| **dossiers** | Cached dossier data (comparables, rent trends, market stats) |
-| **tracked_properties** | User-marked properties being tracked |
-| **sourcing_alerts** | Saved searches and alert subscriptions |
+| **parcels** | The universe, seeded from the SF assessor roll (5+ units) |
+| **signals** | Typed source events per APN (assessor, mortgage, tax delinquent, and others), payload in jsonb |
+| **candidates** | Scored candidates. Analyst-owned fields survive rescoring |
+| **source_runs** | Per-source cursor and row counts |
+| **parcel_info** | SF planning and hazard data |
+| **rent_board_unit / rent_board_block / rent_board_building** | SF Rent Board rent roll and loss-to-lease rollups |
 
 ## Troubleshooting
 
@@ -153,8 +146,7 @@ The `stacks` schema contains:
 **Fix:**
 ```bash
 # Check current quota usage
-# Log in to PropertyRadar dashboard at https://portal.propertyradar.com
-# View account > Billing > API Usage
+# Check usage in the PropertyRadar account billing page
 
 # Upgrade plan or wait for reset (usually monthly)
 # Contact PropertyRadar support if overages appear incorrect
@@ -166,10 +158,7 @@ The `stacks` schema contains:
 **Fix:**
 ```bash
 # Warm Neon connection
-psql "$DATABASE_URL" -c "SELECT 1 FROM stacks.properties LIMIT 1;"
-
-# Check if PropertyRadar API is down
-# https://status.propertyradar.com
+psql "$DATABASE_URL" -c "SELECT 1 FROM stacks.parcels LIMIT 1;"
 
 # If issue persists, check browser network tab (DevTools > Network)
 ```
@@ -179,9 +168,9 @@ psql "$DATABASE_URL" -c "SELECT 1 FROM stacks.properties LIMIT 1;"
 **Cause:** The PropertyRadar pull is gated on billing, so the underlying distress fields never arrived. PropertyRadar is deliberately excluded from the free adapter set and does not run on a cron  
 **Fix:**
 ```bash
-# Verify the properties table actually has the source fields
+# Verify any PropertyRadar distress data arrived. It lands in signal payloads
 psql "$DATABASE_URL" \
-  -c "SELECT id, address, distress_score FROM stacks.properties LIMIT 5;"
+  -c "SELECT apn, type, source FROM stacks.signals WHERE payload ? 'distress_score' LIMIT 5;"
 
 # If the source fields are null, check the PropertyRadar billing gate before
 # looking at the scoring code. The score is a floor computed from PropertyRadar
@@ -190,40 +179,21 @@ psql "$DATABASE_URL" \
 
 ## Common Tasks
 
-### Task 1: Search for High-Distress Properties
+### Task 1: Top-Scored Open Candidates
 ```sql
-SELECT 
-  id, address, estimated_value, distress_score, 
-  last_sale_price, last_sale_date
-FROM stacks.properties
-WHERE distress_score > 70
-  AND estimated_value BETWEEN 5000000 AND 15000000
-  AND neighborhood = 'SF'
-ORDER BY distress_score DESC
+SELECT apn, score, status, last_scored_at
+FROM stacks.candidates
+WHERE status = 'open'
+ORDER BY score DESC
 LIMIT 20;
 ```
 
-### Task 2: Get Comparables for a Property
+### Task 2: Signals for One Parcel
 ```sql
-SELECT 
-  p.address, p.units, p.estimated_value,
-  ROUND(p.estimated_value / p.units, 0) as price_per_unit
-FROM stacks.properties p
-JOIN stacks.dossiers d ON d.property_id = p.id
-WHERE d.comparable_to_id = $1
-ORDER BY p.estimated_value DESC
-LIMIT 10;
-```
-
-### Task 3: Analyze Rent Trends
-```sql
-SELECT 
-  rent_date, avg_rent, median_rent, 
-  (AVG(avg_rent) OVER (ORDER BY rent_date ROWS BETWEEN 12 PRECEDING AND CURRENT ROW)) as rent_trend_12m
-FROM stacks.rent_history
-WHERE property_id = $1
-ORDER BY rent_date DESC
-LIMIT 60;
+SELECT type, source, event_date
+FROM stacks.signals
+WHERE apn = $1
+ORDER BY event_date DESC;
 ```
 
 ## Related Documentation

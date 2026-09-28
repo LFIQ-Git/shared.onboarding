@@ -13,11 +13,11 @@ Do not confuse the two. `/api/extract`, `/api/cron/extract-edges`, and `/api/adm
 
 ## Source count
 
-The Intel source registry (`app/lib/sources.ts`) declares **27 sources**: 24 marked `live` and 3 marked `down` (`yardi`, `docusign`, `cloud-storage`). The file's own header comment still says "the canonical 14 sources" and the docs sidebar still reads "Data Ingestion (14 sources)". Both labels are stale. Treat the array in `sources.ts` as the count, and remember that the Intel registry does not cover the pipelines that bypass `inbox_items` entirely (Power BI, the leasing market scrape, and the Stacks SF civic pull).
+The Intel source registry (`app/lib/sources.ts`) declares **27 sources**: 24 marked `live` and 3 marked `down` (`yardi`, `docusign`, `cloud-storage`). The file's own header comment still says "the canonical 14 sources". That label is stale. Treat the array in `sources.ts` as the count, and remember that the Intel registry does not cover the pipelines that bypass `inbox_items` entirely (Power BI, the leasing market scrape, and the Stacks SF civic pull).
 
-## Intel-native sources (Vercel cron on `intel.lfiq.app`)
+## Intel-native sources (Cloudflare cron triggers on the `brick-intel` Worker)
 
-Schedules below are the live entries in `brick.intel/vercel.json`. All Vercel cron expressions are UTC.
+Schedules below are the `[triggers] crons` in `brick.intel/wrangler.toml`, mapped to routes by `CLOUDFLARE_CRON_ROUTES` in `brick.intel/worker/cron-routes.ts`. Cloudflare cron expressions are UTC.
 
 | Route | Cron | Sources produced | Notes |
 |-------|------|------------------|-------|
@@ -30,7 +30,7 @@ Schedules below are the live entries in `brick.intel/vercel.json`. All Vercel cr
 | `/api/cron/connections-pull` | `40 */6 * * *` | `google-gmail`, `google-calendar`, `google-drive`, `dropbox`, `box` | OAuth broker connections |
 | `/api/cron/graph-report-imports` | `15 */2 * * *` | `onedrive-report-imports` | Operating reports, see below |
 
-The source registry's `cadence` strings drift from `vercel.json` (several still say "every 2h" where the cron is every 4h). `vercel.json` wins.
+The source registry's `cadence` strings drift from the Worker crons (several still say "every 2h" where the cron is every 4h). `wrangler.toml` and `worker/cron-routes.ts` win. A leftover config file from the previous host is still in the repo and schedules nothing.
 
 ## Operating report imports
 
@@ -47,7 +47,7 @@ Facts that matter operationally:
 
 - **OneDrive is retired as a transport.** The source key is still literally `onedrive-report-imports`, which is a naming leftover. Nothing is sourced from a personal OneDrive folder. Do not propose a folder drop for a manual report.
 - Automated Yardi reports arrive from the Yardi scheduler with the subject "Scheduler Reports" and a generic attachment name, so identity is matched on **body keywords**, not filename. The keyword map lives in the registry.
-- Attachments are relayed through object storage rather than posted inline, because Intel runs as a Vercel function with a request body cap. Large workbooks would otherwise fail with a 413.
+- Attachments are relayed through object storage rather than posted inline.
 - Cloudflare Email Routing enforces its own message size cap upstream of the worker. A file large enough to be rejected there leaves no trace at all in the platform. If a report never appears and the worker shows no invocation, suspect the mail gate before the importer.
 - Each report carries a `maxAgeHours` budget in the registry. Staleness is measured from the **last successful import**, not folder modification time, because the email path never touches a watched folder.
 
@@ -60,21 +60,24 @@ Batch jobs run on fly.io, org `brickston`. The dispatcher is a small always-on m
 | `valuation-extractor` | `*/5 * * * *` | Drains the valuation drop; no-op when empty |
 | `valuation-sourcer` | `0 6 * * *` | Feeds the valuation drop |
 | `pbi-sync` | `0 4 * * *` | Power BI sync into `portfolio.pbi_*` |
-| `insight-tagger` | `*/15 * * * *` | Resolves property/vendor/lender FKs on `items.inbox_items` |
-| `gdm-extractor` | `30 11 * * *` | Golden Data Model extract into `gdm.*` (own app image) |
+| `insight-tagger` | `*/30 * * * *` | Resolves property/vendor/lender FKs on `items.inbox_items` |
+| `gdm-extractor` | `30 11 * * *` | Golden Data Model extract into `gdm.*` (own app image, `brick-gdm`) |
 | `gdm-extractor-financials` | `0 5 1,15 * *` | Financials extract on the 1st and 15th |
 | `mobuk-sync` | `30 19 * * 1` | Weekly sync |
 | `briefing-daily-audio` | `0 7 * * *` | See the Daily Briefing page |
 | `briefing-daily-public` | `15 7 * * *` | See the Daily Briefing page |
 | `briefing-weekly-soap` | `0 8 * * 1` | See the Daily Briefing page |
+| `leasing-operator-scrape` | `0 1,13 * * *` | Operator listing ETL into `market.*` (`brick-leasing-etl` image) |
+| `leasing-cl-scrape` | `0 1,13 * * *` | Craigslist listing ETL into `market.*` (`brick-leasing-etl` image) |
+| `leasing-owner-mirror` | `30 3 * * *` | Owner and manager mirror, after the Stacks manager scrape |
 
 The canonical crontab is checked in at `brick.hub/docs/migration-artifacts/fly/fly-cron/crontab`. Nothing about `brick-cron` lives in the Command repo.
 
-**GCP is wound down.** Billing is disabled on the `brickston-v2` project, so the Cloud Scheduler API refuses every call including a plain list. Any doc or code comment describing these jobs as Cloud Run or Cloud Scheduler is out of date. One job, `migration-runner-job`, is still parked on GCP and idle.
+A crontab line alone does not run a job. `run-job.sh` checks `CRON_ENABLED=1` and then checks the label against the `CRON_JOBS` allowlist secret on `brick-cron`. A label missing from `CRON_JOBS` logs "GATED OFF" and exits 0, so it looks scheduled and never runs.
 
 ## Command-produced sources
 
-Command's own scan jobs read the portfolio schema and POST digests to Intel `/api/ingest/market` with a shared ingest secret, differentiated by the `source` field. The catalog is `brick.command/backend/app/jobs/registry.py`, which is the trigger source of truth and now carries a `platform` field per job.
+Command's own scan jobs read the portfolio schema and POST digests to Intel `/api/ingest/market` with a shared ingest secret, differentiated by the `source` field. The catalog is `brick.command/backend/app/jobs/registry.py`, which carries a `platform` field per job; these entries are `platform="cloudflare"`.
 
 | Intel source | Command endpoint | Cron (PT) |
 |--------------|------------------|-----------|
@@ -86,15 +89,15 @@ Command's own scan jobs read the portfolio schema and POST digests to Intel `/ap
 | `brickston-permits` | `/api/v1/brickston-sync/permit-near-property-events` | `0 7 * * *` |
 | `brickston-code-violations` | `/api/v1/brickston-sync/code-violation-cure-events` | `10 7 * * *` |
 
-These are `target_kind="service"` jobs, meaning an HTTP POST to the backend rather than a machine launch. They fire daily and are recorded in `portfolio.scheduled_job_runs`, but the trigger that calls them was never confirmed on Fly. Verify the caller before assuming a schedule change will take effect.
+These are `target_kind="service"` jobs, meaning an HTTP POST to the backend rather than a machine launch. The caller is the Cloudflare Worker `brick-cron-http` (`brick.hub/docs/migration-artifacts/cloudflare/brick-cron-http/`). It runs one `*/5 * * * *` trigger, converts each fire to Pacific time, and dispatches the jobs due in `schedule.json`. It is gated by its own `CRON_ENABLED` and `CRON_JOBS` Worker secrets. Change the schedule in `schedule.json`, not in `registry.py`. Runs are recorded in `portfolio.scheduled_job_runs`.
 
 ## Sources that bypass Intel
 
 | Pipeline | Trigger | Writes | Owner repo |
 |----------|---------|--------|------------|
 | Power BI Golden Data Model | Fly `gdm-extractor` | `gdm.*` directly, truncate and reload | `brick.intel/jobs/gdm-extractor` |
-| Leasing market scrape | GitHub Actions cron | `market.cl_ads`, `market.listings_current` | leasing scraper repos |
-| SF civic and parcel data | Vercel cron on Stacks, `0 8 * * *` UTC | `stacks.parcels`, `stacks.signals` | `brick.stacks` |
+| Leasing market scrape | Fly `brick-cron` `leasing-*` labels | `market.cl_ads`, `market.listings_current` | `brick-leasing-etl` image |
+| SF civic and parcel data | `brick-stacks` Worker `scheduled()` handler, `0 8 * * *` UTC | `stacks.parcels`, `stacks.signals` | `brick.stacks` |
 
 The Golden Data Model is the exception to the "everything lands in `inbox_items`" rule, and it is the only Power BI import in the fleet.
 
@@ -173,7 +176,7 @@ The `receiving` state matters. A source can have broken run logging while ingest
 | Graph pull 401s | Mosser delegated refresh token expired (roughly 90 days, rotates on use) | Re-mint the token from the capture script in Intel |
 | Job ran, wrote nothing | Neon cold start timed out the connection | Warm with `SELECT 1`, rerun |
 
-Manual runs. Every Intel ingest route accepts `x-ingest-secret`, `Bearer CRON_SECRET`, or `?secret=`. Never paste the value into a shared channel.
+Manual runs. Every Intel ingest route accepts `x-ingest-secret`, `Bearer CRON_SECRET`, or `?secret=`. Never paste the value into a shared channel. `intel.lfiq.app` and `stacks.lfiq.app` sit behind Cloudflare Access, so a call from outside also needs an Access service token (`CF-Access-Client-Id` and `CF-Access-Client-Secret` headers). Without one, Access answers with a 302 to its login page before the route sees the secret.
 
 ```bash
 # Dry-run the report importer: shows found and changed files, writes nothing
@@ -190,7 +193,7 @@ flyctl ssh console -a brick-cron -C "/app/run-job.sh pbi-sync python -m jobs.pbi
 curl -s "https://stacks.lfiq.app/api/cron/ingest" -H "X-Cron-Secret: $STACKS_CRON_SECRET" | jq .
 ```
 
-Secret names only. Values live in Vercel environment settings, Fly app secrets, and the macOS Keychain. Nothing goes in a repo.
+Secret names only. Values live in Worker secrets, Fly app secrets, and the macOS Keychain. Nothing goes in a repo.
 
 ## Known gaps
 
