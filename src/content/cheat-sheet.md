@@ -22,7 +22,7 @@ Every internal app is a subdomain of `lfiq.app`. The full list of primary domain
 
 | Item | Value/Location | Notes |
 |------|--------|-------|
-| **Neon Database** | Project `morning-fire-74787570`, endpoint `ep-tiny-lab-akrddwgy` | One database, `neondb`. Schemas: portfolio, items, gdm, market, registry, stacks, collect, repair, public, semantic |
+| **Neon Database** | Project `lfiq-command` (`nameless-paper-46385107`), endpoint `ep-hidden-union-aromj80p` | One database, `neondb`. Schemas: portfolio, items, gdm, market, registry, stacks, collect, repair, public, semantic |
 | **Auth** | Cloudflare Access on every `<app>.lfiq.app` host | Opening any app redirects to the `lfiq.cloudflareaccess.com` login. Clerk was retired 2026-09-17. App access comes from your row in `items.auth_allowed_users` |
 | **Cloudflare** | Account `Left Field` | Workers for Hub, Intel, Command and its sub-apps, Keystone, Registry, Stacks, Sticks, Watch, and `brick-cron-http` |
 | **Fly.io** | `brickston-backend`, `brick-cron`, `brick-mcp-server`, `pkm-mcp`, `brick-cron-monitor` | Command backend, batch jobs, MCP servers, cron dead-man's-switch. `brick-gdm` and `brick-leasing-etl` are suspended apps whose images `brick-cron` launches as one-off machines |
@@ -39,7 +39,7 @@ npm ci
 # 2. Local secrets: copy the names-only template and fill it in
 cp .dev.vars.example .dev.vars
 # DATABASE_URL comes from Neon (console Connect, or the Neon MCP get_connection_string
-# for project morning-fire-74787570). Never commit .dev.vars.
+# for project nameless-paper-46385107, lfiq-command). Never commit .dev.vars.
 
 # 3. Verify local development
 npm run dev
@@ -57,7 +57,7 @@ curl http://localhost:3000/api/health
 - **Access:** The row's `apps` array and `is_admin` flag decide which apps you see
 
 ### Neon Database Access
-- **Endpoint:** `ep-tiny-lab-akrddwgy` (project `morning-fire-74787570`)
+- **Endpoint:** `ep-hidden-union-aromj80p` (project `lfiq-command`, `nameless-paper-46385107`)
 - **Port:** 5432. There is no local proxy
 - **Auth:** Neon roles (intel, command, pkm, gdm_extractor, market_scraper)
 - **How to connect:** Pull the connection string from Neon (console Connect, or the Neon MCP `get_connection_string`). It returns the pooled string

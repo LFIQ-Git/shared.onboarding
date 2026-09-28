@@ -21,7 +21,7 @@ Complete system architecture for the LFIQ platform, including the BRICK family o
 All LFIQ applications share a **single Neon database** (PostgreSQL). Data is organized by schema, not by separate databases.
 
 **Neon Project Details:**
-- **Endpoint:** `ep-tiny-lab-akrddwgy` (Neon project `morning-fire-74787570`)
+- **Endpoint:** `ep-hidden-union-aromj80p` (Neon project `lfiq-command`, `nameless-paper-46385107`)
 - **Database:** neondb
 - **Region:** us-west-2
 - **Backup:** Neon Autoscaling + daily snapshots
@@ -83,7 +83,7 @@ All LFIQ applications share a **single Neon database** (PostgreSQL). Data is org
                 │                      │
 ┌───────────────▼──────────────────────▼─────────────────────────────────┐
 │              NEON DATABASE (POSTGRES)                                   │
-│              endpoint ep-tiny-lab-akrddwgy                            │
+│              endpoint ep-hidden-union-aromj80p                        │
 │              ┌─────────────────────────────────────────────────────┐  │
 │              │  neondb (10 schemas)                                 │  │
 │              │  - portfolio    - items       - gdm                  │  │

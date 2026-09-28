@@ -21,7 +21,11 @@ The three-database model was retired in the 2026-05-17/18 consolidation. Anythin
 
 The same organization holds two more projects, `lfiq-apps` (`rapid-voice-40730355`) and `lfiq-home` (`delicate-smoke-15614378`), both in AWS `us-east-1`. The BRICK apps do not use them.
 
-The project moved on 2026-09-07. The old project, `neon-claret-umbrella` (`morning-fire-74787570`, endpoint `ep-tiny-lab-akrddwgy`), sits in a different Neon organization that the Neon MCP cannot read. Workers still pointed at it were repointed and their rows merged forward on 2026-09-11. Some configs and repo notes still name the old endpoint, including the `DB_HOST` on `brick-cron-monitor` and the `CLAUDE.md` files for `brick.stacks`, `brick.registry` and `lfi.home`. Treat any `ep-tiny-lab-akrddwgy` reference as stale until someone confirms otherwise.
+The project moved on 2026-09-07. The old project, `neon-claret-umbrella` (`morning-fire-74787570`, endpoint `ep-tiny-lab-akrddwgy`, org `org-cold-tree-71506959` "Vercel: LFIQ"), was replicated to `lfiq-command` and then deleted (verified 2026-09-28). Workers still pointed at it were repointed and their rows merged forward on 2026-09-11. Any DSN or config that still names `ep-tiny-lab-akrddwgy` is stale and fails with a password error. All 17 roles were recreated on `lfiq-command` with new passwords, which are in macOS Keychain as `com.justinsato.pkm.lfiq-command-<role>-password`.
+
+The pooled host is transaction-mode PgBouncer. It drops session state, so a session `SET search_path` does not survive between transactions. Pools that rely on one must use the direct host; Command's Fly backend does this through `_session_host()` in `backend/app/db.py`.
+
+Cloudflare Hyperdrive config `neondb-owner` (id `accfc5c90b364548a1b835abf46cae6e`, direct host, role `neondb_owner`, caching disabled) is bound as `HYPERDRIVE` on the Workers `brick-command`, `brick-hub`, `brick-intel`, `brick-keystone`, `brick-registry`, `brick-stacks` and `lfi-home` (added 2026-09-28). After a `neondb_owner` password rotation, run `wrangler hyperdrive update neondb-owner`.
 
 Cross-schema joins are legal and used in production. Command's collections module joins `gdm.artenant` to `gdm.tenant`; Command's GDM read path queries the `gdm` schema from an app that otherwise lives in `portfolio`. Write the join, it is one database.
 
