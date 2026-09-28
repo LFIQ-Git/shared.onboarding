@@ -1,6 +1,6 @@
 # Getting Started: Local Development Setup
 
-Step-by-step guide to clone the LFIQ monorepo, install dependencies, configure secrets, and verify your development environment.
+Step-by-step guide to clone the LFIQ app repos, install dependencies, configure secrets, and verify your development environment.
 
 ## Prerequisites
 
@@ -9,8 +9,8 @@ Before starting, ensure you have:
 - **Git** (installed via Xcode Command Line Tools)
 - **GitHub CLI** (`gh` command installed)
 - **GitHub account** with access to LFIQ-Git organization
-- **Vercel account** on the LFIQ team, linked to GitHub. This is where environment variables come from
-- **Clerk access**: you must be invited before you can sign in to any app
+- **Cloudflare account** with access to the Left Field Investments account, for `npx wrangler` against the Workers
+- **An `items.auth_allowed_users` row**: a `brick_admin` has to add your email before you can use any app. Cloudflare Access only proves who you are
 - **colima** if you will deploy to Fly. Fly builds locally and needs a Docker daemon
 - **Fly.io account** (for viewing logs of brickston-backend)
 
@@ -18,34 +18,34 @@ You do not need a local Postgres and you do not need a database proxy. Apps conn
 
 ## Step 1: Clone & Install Dependencies
 
-### 1a. Clone the monorepo
+### 1a. Clone the app repos
+Each app is its own repository. The `brick.apps` superproject still exists on GitHub, but its submodules are not used for day-to-day work; clone the app repos you need directly.
 ```bash
-git clone https://github.com/LFIQ-Git/brick.apps.git
-cd brick.apps
+gh repo clone LFIQ-Git/brick.hub
+gh repo clone LFIQ-Git/brick.command
+gh repo clone LFIQ-Git/brick.intel
+# ...and brick.keystone, brick.registry, brick.stacks, brick.sticks as needed
 ```
+Hub's app lives in the `hub/` subdirectory of `brick.hub`. Command is an npm workspaces repo with `apps/web` plus the sub-apps under `apps/`.
 
 ### 1b. Install Node and Python versions via mise
 ```bash
 # Install mise (if not already installed)
 curl https://mise.jdx.dev/install.sh | sh
 
-# Install Node 20 and Python 3.11
+# Install Node 22 and Python 3.11 (run inside brick.command, which has mise.toml)
 mise install
 
 # Verify versions
-node --version  # v20.x.x
+node --version  # v22.x.x
 python --version  # Python 3.11.x
 ```
 
 ### 1c. Install npm dependencies
+Run this in each app directory (for Hub, inside `brick.hub/hub`; for Command, at the `brick.command` root):
 ```bash
 npm ci
 # This respects the package-lock.json exactly (better for CI/team consistency)
-```
-
-**Expected output:**
-```
-added 2000+ packages, and audited 2,345 packages in 15s
 ```
 
 ## Step 2: Authenticate with GitHub
@@ -61,11 +61,13 @@ gh auth status
 
 ## Step 3: Understand Where Secrets Live
 
-There is no local secrets directory to populate and nothing to fetch from a GCP console. Every value an app needs comes from one of three places:
+There is no shared secrets directory to populate. Every value an app needs comes from one of these places:
 
 | Surface | What lives there | How you get it |
 |---------|------------------|----------------|
-| Vercel environment | All web app configuration, including database URLs and Clerk keys | `vercel env pull` |
+| Cloudflare Worker secrets | Web app credentials, set with `wrangler secret put` or `wrangler secret bulk` | `npx wrangler secret list --name <worker>` shows names, never values |
+| Worker `vars` in `wrangler.jsonc` / `wrangler.toml` | Non-secret config such as `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` | Read the file |
+| Neon | Database connection strings | Neon console, **Connect** |
 | Fly app secrets | Backend and job configuration for `brickston-backend`, `brick-cron`, and the MCP apps | `flyctl secrets list` shows names, never values |
 | macOS Keychain | Local operator credentials such as the Fly deploy token | Keychain Access |
 
@@ -73,114 +75,72 @@ Secret **names** are safe to write down and appear throughout this manual. Value
 
 `flyctl secrets list` marks a secret as "Deployed" even when its value is an empty string. The digest does not distinguish. If a secret looks set but the app behaves as if it is missing, check inside the machine with `printenv`.
 
-## Step 4: Link Vercel & Pull Environment Variables
+## Step 4: Create Your Local Environment File
 
-Each app in the monorepo is deployed via Vercel. Link your local checkout to the Vercel projects, then pull the environment variables.
+Each app is deployed as a Cloudflare Worker. Worker secret values cannot be read back out of Cloudflare, so there is nothing to pull. Copy the repo's template and fill in the values you need:
 
-### 4a. Link to Vercel
-From the monorepo root:
 ```bash
-vercel link --project hub
-# Select: Link to existing project
-# Choose: lfiq / hub
+cp .env.example .env.local
 ```
 
-### 4b. Pull environment variables
+Repos that run locally under Wrangler or vinext also ship `.dev.vars.example` (Intel, Keystone, Registry, Stacks, Watch). Copy it to `.dev.vars` for those runs. Never commit `.env.local` or `.dev.vars`.
+
+To see which secrets a deployed Worker actually has (names only):
 ```bash
-vercel env pull
-# Creates .env.local in the current app directory
-# Pulls NEXT_PUBLIC_* and other build-time variables
+npx wrangler secret list --name brick-intel
 ```
 
-Repeat for each app (if developing on multiple):
-```bash
-# From brick.apps/apps/hub
-vercel link --project hub && vercel env pull
-
-# From brick.apps/apps/intel
-vercel link --project intel && vercel env pull
-
-# From brick.apps/apps/command
-vercel link --project command && vercel env pull
-
-# ... and so on for keystone, registry, stacks, sticks
-```
+Pull `DATABASE_URL` from the Neon console. For anything else, ask a `brick_admin` rather than copying values from another repo's committed file.
 
 ## Step 5: Verify Local Development Environment
 
 ### 5a. Start the Hub app (default)
 ```bash
-cd /path/to/brick.apps/apps/hub
-npm run dev
-# Expected output:
-# ▲ Next.js 15.0.0
-# - Local: http://localhost:3000
-# - Environments: .env.local
+cd /path/to/brick.hub/hub
+BRICK_AUTH_DISABLED=true npm run dev
+# Hub's dev script is `next dev --port 3040`
+# - Local: http://localhost:3040
 ```
 
+Locally there is no Cloudflare Access in front of the app, so the gate has nothing to verify. `BRICK_AUTH_DISABLED=true` bypasses it outside production. See [Cloudflare Access](/docs/access-auth) for what the bypass does.
+
 ### 5b. Health check
+Hub has no health route. Intel, Keystone, Registry and Sticks expose `/api/health`:
 ```bash
-# In another terminal
+# From a running Intel dev server, in another terminal
 curl http://localhost:3000/api/health
-# Expected: {"status": "ok"}
 ```
 
 ### 5c. Open in browser
-Navigate to http://localhost:3000 in your browser. You should see:
-- Hub splash page (public, no login required initially)
-- "Sign in with Google" or "Sign in with Microsoft" button
-- The hosted Clerk sign-in flow
+Navigate to http://localhost:3040. With the bypass on you land on the Hub home page with a synthetic operator that has every app unlocked.
 
-### 5d. Test Clerk authentication
-- Click "Sign in with Google" or "Sign in with Microsoft". There is no password option anywhere in the fleet
-- Use a company account. Sign-up is restricted to an allowlist of company domains, so a personal account will not provision
-- After login, you should see the Hub home page with document index
-- Profile menu in top-right corner
-
-If you are signed in but see an access-denied page, you are authenticated but not authorized. A `brick_admin` has to grant your Clerk org role. See [Clerk Authentication](/docs/clerk-auth).
-
-Note that Hub's checked-in `.env.local` carries a `pk_test_` publishable key pointing at a throwaway development Clerk instance. The production `pk_live_` key exists only in the Vercel environment, which is another reason to run `vercel env pull` rather than trusting a committed file.
+### 5d. Test production sign-in
+- Open https://hub.lfiq.app. Cloudflare Access intercepts the request and redirects to `lfiq.cloudflareaccess.com`
+- Sign in with Google, Microsoft Entra ID, or the emailed one-time code
+- If you clear Access but see "Access not enabled", your email has no `items.auth_allowed_users` row. A `brick_admin` has to add it
 
 ## Step 6: Set Up Other Apps (Repeat as Needed)
 
-Once Hub is verified, set up the other apps. Each follows the same pattern:
+Once Hub is verified, set up the other apps. Each follows the same pattern: `npm ci`, `cp .env.example .env.local`, fill in values, then `npm run dev`. Only Hub pins a port. Every other app runs plain `next dev`, which serves on http://localhost:3000, so run one at a time or pass `-- --port <n>`.
 
 ```bash
 # Intel
-cd ../intel
-vercel link --project intel
-vercel env pull
-npm run dev  # Runs on http://localhost:3001
+cd /path/to/brick.intel && npm ci && npm run dev
 
-# Command
-cd ../command
-vercel link --project command
-vercel env pull
-npm run dev  # Runs on http://localhost:3002
+# Command (root script runs the web workspace)
+cd /path/to/brick.command && npm ci && npm run dev
 
 # Keystone
-cd ../keystone
-vercel link --project keystone
-vercel env pull
-npm run dev  # Runs on http://localhost:3003
+cd /path/to/brick.keystone && npm ci && npm run dev
 
 # Registry
-cd ../registry
-vercel link --project registry
-vercel env pull
-npm run dev  # Runs on http://localhost:3004
+cd /path/to/brick.registry && npm ci && npm run dev
 
 # Stacks
-cd ../stacks
-vercel link --project stacks
-vercel env pull
-npm run dev  # Runs on http://localhost:3005
+cd /path/to/brick.stacks && npm ci && npm run dev
 
 # Sticks
-cd ../sticks
-vercel link --project sticks
-vercel env pull
-npm run dev  # Runs on http://localhost:3006
+cd /path/to/brick.sticks && npm ci && npm run dev
 ```
 
 ## Troubleshooting Common Errors
@@ -197,11 +157,11 @@ npm run dev
 
 ### Error 2: "ENOENT: no such file or directory, open .env.local"
 **Symptom:** App starts but complains about missing .env.local  
-**Cause:** Vercel link failed or vercel env pull didn't run  
+**Cause:** the local env file was never created  
 **Fix:**
 ```bash
-vercel link --project hub --yes
-vercel env pull
+cp .env.example .env.local
+# fill in values, then
 npm run dev
 ```
 
@@ -217,18 +177,13 @@ See [Neon Debugging](/docs/neon-debugging).
 
 ### Error 4: "Cannot find module '@brick/ui'"
 **Symptom:** TypeScript error about shared UI package  
-**Cause:** Monorepo linking not resolved  
+**Cause:** Workspace linking not resolved. `@brick/ui` lives in `brick.command/packages/ui`  
 **Fix:**
 ```bash
-npm run build -w packages/ui
+cd /path/to/brick.command
 npm ci
 npm run dev
 ```
-
-### Error 5: "gcloud commands fail with BILLING_DISABLED"
-**Symptom:** Any `gcloud scheduler` call fails, including a plain list  
-**Cause:** Expected. Billing is disabled on `brickston-v2`. The Cloud Scheduler API is dead  
-**Fix:** There is nothing to fix. Whatever you were trying to reach moved to Fly. See [GCP Cloud Run](/docs/gcp-cloud-run).
 
 ## What's Next?
 
@@ -236,4 +191,4 @@ npm run dev
 - Read the **Hub** guide to learn the entry point interface and chat proxy
 - Read **Intel** to understand data ingestion from the 27 registered sources
 - Read **Command** for portfolio management workflows
-- Open a pull request to verify your Git + Vercel setup end-to-end
+- Open a pull request to verify your Git + Workers Builds setup end-to-end

@@ -47,10 +47,9 @@ export const docNav: DocSection[] = [
     title: 'Infrastructure',
     items: [
       { href: '/docs/neon-database', label: 'Neon Database' },
-      { href: '/docs/vercel-deployment', label: 'Vercel Deployment' },
+      { href: '/docs/cloudflare-deployment', label: 'Cloudflare Deployment' },
       { href: '/docs/fly-io-backend', label: 'Fly.io Backend' },
-      { href: '/docs/gcp-cloud-run', label: 'GCP (Wind-Down)' },
-      { href: '/docs/clerk-auth', label: 'Clerk Authentication' },
+      { href: '/docs/access-auth', label: 'Cloudflare Access' },
     ],
   },
   {
@@ -67,7 +66,7 @@ export const docNav: DocSection[] = [
     items: [
       { href: '/docs/common-errors', label: 'Common Errors' },
       { href: '/docs/neon-debugging', label: 'Neon Debugging' },
-      { href: '/docs/vercel-debugging', label: 'Vercel Debugging' },
+      { href: '/docs/cloudflare-debugging', label: 'Cloudflare Debugging' },
       { href: '/docs/auth-issues', label: 'Authentication Issues' },
     ],
   },

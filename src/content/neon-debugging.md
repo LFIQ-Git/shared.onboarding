@@ -21,9 +21,10 @@ Everything runs against one Neon database, `neondb`, split by schema. Most datab
 
 | Fact | Value |
 |------|-------|
+| Neon project | `lfiq-command` (`nameless-paper-46385107`), org `LFIQ - Neon` |
 | Database | `neondb` |
-| Endpoint | `ep-tiny-lab-akrddwgy`, us-west-2 |
-| Pooled host suffix | `-pooler.c-3.us-west-2.aws.neon.tech` |
+| Endpoint | `ep-hidden-union-aromj80p`, us-west-2 |
+| Pooled host suffix | `-pooler.c-4.us-west-2.aws.neon.tech` |
 | Owner role for DDL | `neondb_owner` |
 
 | Schema | Owns |
@@ -39,6 +40,8 @@ Everything runs against one Neon database, `neondb`, split by schema. Most datab
 | `public` | PKM tables plus the shared extensions (`vector`, `pg_trgm`, `btree_gin`, `fuzzystrmatch`, `pgcrypto`) |
 | `semantic` | Shared semantic index records and query events |
 | `neon_auth` | Neon Auth managed identity tables |
+| `lfi` | `lfi.home` advisory business and tax tables |
+| `civic` | Civic and watch notices |
 
 Cross-schema joins are valid SQL. It is one database.
 
@@ -80,13 +83,21 @@ const dsn = (process.env.DATABASE_URL || "").trim().replace(/^['"]|['"]$/g, "");
 
 ### Pulling a DSN
 
-```bash
-gcloud auth login
-gcloud secrets versions access latest --secret=intel-neon-database-url --project=brickston-v2  # direct
-gcloud secrets versions access latest --secret=items-hub-database-url  --project=brickston-v2  # pooler
+Pull it from Neon, through the Neon MCP or the Neon console (project `lfiq-command`, **Connect**):
+
+```text
+get_connection_string(project_id='nameless-paper-46385107', roleName='<role>')   # pooled
 ```
 
-Never paste a DSN into chat, an issue, or a commit. If `gcloud` returns a reauthentication error and says it cannot prompt, retry once. The credential in this environment often refreshes on the second call.
+Remove `-pooler` from the host for the direct string. Never paste a DSN into chat, an issue, or a commit.
+
+### Symptom: writes succeed but no other app sees the rows
+
+**Cause:** the app's DSN still points at the retired `ep-tiny-lab-akrddwgy` endpoint in the old Neon organization. `brick-intel` and `brick-watch` did this until 2026-09-11, and three days of Intel writes had to be merged forward.
+
+**Fix:** repoint the secret at `ep-hidden-union-aromj80p` with the app's scoped role.
+
+**How to confirm it worked:** `select current_user` through the app returns the scoped role, and the new rows appear when you query `lfiq-command` directly.
 
 ## Cold starts and timeouts
 
@@ -264,6 +275,6 @@ If a count is greater than zero but a dashboard card looks dead, the ingest is f
 
 - [Common Errors](/docs/common-errors)
 - [Neon Database](/docs/neon-database)
-- [Vercel Debugging](/docs/vercel-debugging)
+- [Cloudflare Debugging](/docs/cloudflare-debugging)
 - [Architecture](/docs/architecture)
 - [Intel](/docs/apps/intel)

@@ -115,7 +115,7 @@ export default function Home() {
                   { label: 'Troubleshooting', href: '/docs/common-errors' },
                   { label: 'Common Tasks', href: '/docs/property-onboarding' },
                   { label: 'Daily Operations', href: '/docs/daily-briefing' },
-                  { label: 'Deployment', href: '/docs/vercel-deployment' },
+                  { label: 'Deployment', href: '/docs/cloudflare-deployment' },
                 ].map((item) => (
                   <li key={item.href}>
                     <Link

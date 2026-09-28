@@ -6,7 +6,7 @@ Two different things in this platform are called a briefing. One is a written mo
 
 | | Written daily briefing | Brick audio and video briefing |
 |---|---|---|
-| Producer | `02-brick.keystone/automation/scripts/daily_briefing.py` | `02-brick.command/backend/scripts/brick_briefing.py` |
+| Producer | `brick.keystone/automation/scripts/daily_briefing.py` | `brick.command/backend/scripts/brick_briefing.py` |
 | Reads | PKM tasks, deadlines, commitments, delegated items, calendar, watchlist, audit and extraction history | `items.inbox_items` for a time window, scoped to items tied to an active portfolio property |
 | Output | Markdown text | Audio file, or video for the weekly recap |
 | Stored in | `public.daily_briefing` | `portfolio.ai_artifact`, file in object storage |
@@ -48,15 +48,15 @@ This has cost a redeploy before. There are two, and editing the wrong one change
 
 | Implementation | File | Exposed as |
 |----------------|------|------------|
-| Keystone | `02-brick.keystone/automation/mcp_server.py`, `get_briefing()` | The Keystone MCP server |
-| Hub shim | `02-brick.hub/packages/brick-agent-mcp/brick_agent_mcp/server.py`, `_get_briefing()` | The `get_briefing` tool on the Brick MCP server |
+| Keystone | `brick.keystone/automation/mcp_server.py`, `get_briefing()` | The Keystone MCP server |
+| Hub shim | `brick.hub/packages/brick-agent-mcp/brick_agent_mcp/server.py`, `_get_briefing()` | The `get_briefing` tool on the Brick MCP server |
 
 Both read `public.daily_briefing` first. The tell that you are hitting the Hub shim is its empty-state string. If a briefing exists in Neon but a client returns nothing, you patched the wrong copy.
 
 ### Regenerating
 
 ```bash
-cd /Volumes/satopkm/justinsato/Projects/ACTIVE/02-brick.apps/02-brick.keystone
+cd /Volumes/minibase/justinsato/Projects/ACTIVE/apps/brick/brick.keystone
 
 # Today, with the LLM composer
 ./venv/bin/python -m automation.scripts.daily_briefing
@@ -71,7 +71,7 @@ cd /Volumes/satopkm/justinsato/Projects/ACTIVE/02-brick.apps/02-brick.keystone
 ./venv/bin/python automation/scripts/daily_briefing.py --dry-run
 ```
 
-Keystone carries two Python environments (`.venv` and `venv`) on different interpreter versions. Confirm which one has the requirements installed before assuming an import error is a code bug.
+A fresh clone has no Python environment. Create `venv` and install `automation/requirements.txt` before running these commands, then confirm the imports resolve before treating an import error as a code bug.
 
 Verify the write landed:
 
@@ -94,9 +94,9 @@ LIMIT 7;
 
 ## Scheduling reality
 
-The written briefing used to run from a local scheduled job on the operator's Mac at 06:00. **That job was retired on 2026-06-23** along with the rest of the local job fleet, and its definition sits in `02-brick.keystone/automation/launchd/retired/`. No `com.justinsato.*` jobs are loaded on the machine.
+The written briefing used to run from a local scheduled job on the operator's Mac at 06:00. **That job was retired on 2026-06-23** along with the rest of the local job fleet, and its definition sits in `brick.keystone/automation/launchd/retired/`. No `com.justinsato.*` jobs are loaded on the machine.
 
-There is no replacement producer in the Fly crontab, in the Vercel crons, or in the Command job registry. As written today, the daily briefing table is populated by an on-demand run: the MCP automation runner whitelists the script, and an operator or agent can invoke it directly. **Not verified: whether a cloud scheduler now fires it on a cadence. Confirm with Justin before telling anyone the written briefing runs automatically every morning.**
+There is no replacement producer in the Fly `brick-cron` crontab, in any Worker cron trigger (the `brick-keystone` Worker's only cron is `5 8 * * *` for `/api/cron/carry-score`), or in the Command job registry. As written today, the daily briefing table is populated by an on-demand run: the MCP automation runner whitelists the script, and an operator or agent can invoke it directly. **Not verified: whether any scheduler now fires it on a cadence. Confirm with Justin before telling anyone the written briefing runs automatically every morning.**
 
 A separate agent task named `daily-primer` produces a morning primer under `PKM/primers/`. That is a different artifact from `public.daily_briefing`, and its own step-zero instructions still reference the retired local jobs and a pre-rename PKM path, so treat that skill file as out of date.
 
@@ -155,7 +155,7 @@ flyctl ssh console -a brick-cron -C \
    --kinds audio --window-hours 24 --audience public --out-dir /tmp/briefings"
 
 # Locally, needs the Command DSN and the generation credential
-cd /Volumes/satopkm/justinsato/Projects/ACTIVE/02-brick.apps/02-brick.command/backend
+cd /Volumes/minibase/justinsato/Projects/ACTIVE/apps/brick/brick.command/backend
 ./venv/bin/python -m scripts.brick_briefing --kinds audio --window-hours 48
 ```
 
@@ -181,7 +181,7 @@ LIMIT 10;
 | Job never started | `brick-cron` dispatcher down | Check the dispatcher liveness endpoint and the dead-man's-switch monitor app |
 | Weekly video empty | 168-hour window with no qualifying inbox items | Confirm ingestion for that week first |
 
-The Command job registry (`backend/app/jobs/registry.py`) also carries older `service` entries for the briefings that describe them as kicking a Cloud Run job. Those descriptions predate the Fly migration. The `fly-machine` entries with the crontab labels are the live ones.
+The Command job registry (`backend/app/jobs/registry.py`) no longer carries briefing entries. The three `brick-cron` crontab labels above are the only schedule.
 
 ## Related pages
 

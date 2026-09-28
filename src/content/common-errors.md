@@ -1,6 +1,6 @@
 # Common Errors
 
-Cross-cutting failures the LFIQ team has actually hit, with the fix that worked. Vendor-specific problems live on the Neon, Vercel, and auth pages. Start here when you do not yet know which layer broke.
+Cross-cutting failures the LFIQ team has actually hit, with the fix that worked. Vendor-specific problems live on the Neon, Cloudflare, and auth pages. Start here when you do not yet know which layer broke.
 
 ## Triage table
 
@@ -24,16 +24,16 @@ Cross-cutting failures the LFIQ team has actually hit, with the fix that worked.
 
 ## Repo layout and worktrees
 
-The canonical checkouts are `brick.apps/02-brick.{command,hub,intel,keystone,registry}`. `brick.apps` is a git superproject that tracks each app as a submodule gitlink and has its own remote at `LFIQ-Git/brick.apps`.
+The canonical checkouts are standalone clones, one per repo, at `Projects/ACTIVE/apps/brick/brick.{command,hub,intel,keystone,registry,stacks,sticks,watch}`. `brick.apps` is a git superproject that tracks each app as a submodule gitlink and has its own remote at `LFIQ-Git/brick.apps`, but its submodules are not initialized locally, so its app directories are empty.
 
-### Symptom: you edit a file under `brick.apps/.claude/worktrees/<name>/brick.hub/` and nothing changes
+### Symptom: you edit a file under `brick.apps/brick.hub/` or a worktree of `brick.apps` and nothing changes
 
-**Cause:** worktrees created off the superproject have empty submodule directories. You are editing a path that carries no code.
+**Cause:** the superproject's submodule directories are empty, and so are worktrees created off it. You are editing a path that carries no code.
 
 **Fix:**
 1. Edit the real checkout instead:
    ```bash
-   cd /Volumes/minibase-ssd/justinsato/Projects/ACTIVE/brick.hub
+   cd /Volumes/minibase/justinsato/Projects/ACTIVE/apps/brick/brick.hub
    ```
 2. If you need an isolated copy, add a worktree inside the child repo off `origin/main`, not off the superproject.
 3. Symlink `node_modules` from the main checkout when the lockfile matches, rather than reinstalling.
@@ -42,22 +42,18 @@ The canonical checkouts are `brick.apps/02-brick.{command,hub,intel,keystone,reg
 
 ### Symptom: a fleet-wide nav or branding change only lands in one app
 
-**Cause:** `AppFamilyMenu` is a hand-copied file per app, not a shared import. Only the Command monorepo shares one copy across its sub-apps.
+**Cause:** `AppFamilyMenu` was a hand-copied file per app, not a shared import. Most copies have since been retired; the ones still on `main` are listed below.
 
-**Fix:** edit every copy.
+**Fix:** edit every remaining copy.
 
 | App | Path |
 |-----|------|
-| Command (shared across sub-apps) | `brick.command/packages/ui/src/components/app-family-menu.tsx` |
-| Intel | `brick.intel/app/components/AppFamilyMenu.tsx` |
-| Registry | `brick.registry/components/AppFamilyMenu.tsx` |
 | Stacks | `brick.stacks/components/AppFamilyMenu.tsx` |
-| Keystone | `brick.keystone/components/AppFamilyMenu.tsx` |
-| Hub | `brick.hub/hub/components/AppFamilyMenu.tsx` |
+| Sticks | `brick.sticks/components/AppFamilyMenu.tsx` |
 
-Hub also draws the tagline strip from `brick.hub/hub/lib/apps.ts` (`BRICK_APPS_BRICK_ORDER`), which uses its own wording. A tagline sweep touches that file plus the reference copy at `brick.hub/canonical-app-family-menu/AppFamilyMenu.tsx`.
+Hub draws the tagline strip from `brick.hub/hub/lib/apps.ts` (`BRICK_APPS_BRICK_ORDER`), which uses its own wording. A tagline sweep touches that file too.
 
-**How to confirm it worked:** grep both string sets across `brick.apps/` and get zero stale hits.
+**How to confirm it worked:** grep both string sets across the app checkouts under `apps/brick/` and get zero stale hits.
 
 ## Dependencies and lockfiles
 
@@ -66,7 +62,7 @@ Hub also draws the tagline strip from `brick.hub/hub/lib/apps.ts` (`BRICK_APPS_B
 **Cause:** a React version split inside the monorepo. React 19 hoists to the root `node_modules` while a sub-app pins React 18, and a React-18-shaped element reaches the React 19 renderer. This broke every production build of all six Command sub-apps until the versions were unified.
 
 **Fix:**
-1. Pin every sub-app to mirror `apps/web`: `next ^15.5.9`, `react` and `react-dom` `^19.0.3`, `eslint-config-next ^15.5.9`.
+1. Pin every sub-app to mirror `apps/web`. Today that is `next ^16.3.2` and `react` and `react-dom` `^19.0.3`.
 2. Delete any per-app lockfile and regenerate the single root one.
 3. Run the async-request-api codemod where params and searchParams are now Promises:
    ```bash
@@ -77,11 +73,11 @@ Hub also draws the tagline strip from `brick.hub/hub/lib/apps.ts` (`BRICK_APPS_B
 
 ### Symptom: a sub-app build fails on a dependency mismatch that is not in the root lockfile
 
-**Cause:** a committed per-app `package-lock.json`. npm workspaces uses one root lockfile; a stray per-app lockfile poisons resolution locally and poisons Vercel's per-app install.
+**Cause:** a committed per-app `package-lock.json`. npm workspaces uses one root lockfile; a stray per-app lockfile poisons resolution.
 
 **Fix:**
 ```bash
-cd brick.apps/brick.command
+cd /path/to/brick.command
 ls apps/*/package-lock.json          # any hit here is the bug
 git rm apps/<name>/package-lock.json
 rm -rf apps/<name>/node_modules
@@ -112,7 +108,7 @@ git commit -am "chore: regenerate lockfile with npm@10"
 
 **Fix:**
 ```bash
-cd brick.apps/brick.command/apps/web
+cd /path/to/brick.command/apps/web
 rm -rf .next
 npm run build
 # if it recurs
@@ -239,7 +235,7 @@ The Brick sweep runs this assertion after every run and posts a data-corruption 
 1. Use the typed builder: `inArray(entities.id, row.entityIds)`.
 2. Normalize comment fields to strings, or substitute a placeholder, before render.
 
-**How to confirm it worked:** load the specific failing id, not just the list page. In production, the browser console error digest is the lookup key in Vercel logs for the real stack trace.
+**How to confirm it worked:** load the specific failing id, not just the list page. In production, the browser console error digest is the lookup key in the Worker's logs (`npx wrangler tail <worker>` or the Cloudflare dashboard) for the real stack trace.
 
 ### Symptom: `invalid input syntax for type timestamp` reading calendar rows, followed by an unrelated-looking module error
 
@@ -279,7 +275,7 @@ A growing count means the loop regressed, usually from a reverted PR or a new pu
 
 **Fix:**
 ```bash
-for d in /Volumes/minibase-ssd/justinsato/Projects/ACTIVE/brick.apps/02-brick.*; do
+for d in /Volumes/minibase/justinsato/Projects/ACTIVE/apps/brick/brick.*; do
   git -C "$d" fetch --quiet --prune
 done
 ```
@@ -294,7 +290,7 @@ git diff --quiet origin/main <branch> -- $changed && echo "superseded"
 ## Related pages
 
 - [Neon Debugging](/docs/neon-debugging)
-- [Vercel Debugging](/docs/vercel-debugging)
+- [Cloudflare Debugging](/docs/cloudflare-debugging)
 - [Authentication Issues](/docs/auth-issues)
 - [Architecture](/docs/architecture)
 - [Local Setup](/docs/getting-started/setup)

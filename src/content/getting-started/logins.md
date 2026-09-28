@@ -1,76 +1,55 @@
 # Getting Started: Logins & Authentication
 
-Complete reference for the authentication systems used across LFIQ applications: Clerk, the Sticks exception, database roles, and API credentials.
+Complete reference for the authentication systems used across LFIQ applications: Cloudflare Access, the operator allowlist, database roles, and API credentials.
 
-## Clerk Authentication (BRICK Apps)
+## Cloudflare Access (BRICK Apps)
 
-One shared Clerk instance covers Hub, Intel, Command and its sub-apps, Keystone, Registry, and Stacks. Log in once and the session carries across all of them. Sticks is the exception and runs its own NextAuth setup, covered below. Full depth is on [Clerk Authentication](/docs/clerk-auth).
+Cloudflare Access fronts Hub, Intel, Command and its sub-apps, Keystone, Registry, Stacks and Sticks. Access proves who you are; your row in `items.auth_allowed_users` decides which apps you may open. Full depth is on [Cloudflare Access](/docs/access-auth).
 
-NextAuth and the old `@brick/auth` package were retired from the BRICK apps in the June 2026 migration. If you find `NEXTAUTH_SECRET` or `NEXTAUTH_URL` referenced in one of those repos, it is dead configuration.
+Clerk is retired across the fleet (cutover to Access on 2026-09-13, last Clerk code removed from Hub on 2026-09-17), and Sticks no longer runs NextAuth. If you find `CLERK_*`, `BRICK_CLERK_*` or `NEXTAUTH_*` referenced in one of those repos, treat it as dead configuration.
 
 ### Logging In
 
-**Supported Providers:**
+**Supported Methods** (read from the live Access login page):
 - Google
-- Microsoft
-
-That is the whole list. Password, passkey and email-code sign-in are all disabled on the instance. The org is split across Google Workspace and Microsoft 365, which is why both providers exist rather than Google alone.
+- Microsoft Entra ID
+- Emailed one-time code
 
 **Login Flow:**
-1. Visit any BRICK app (hub.lfiq.app, intel.lfiq.app, etc.). If you are not signed in you are redirected to that app's `/login`
-2. Clerk renders on that page. The apps do not hand off to a Clerk-hosted sign-in page
-3. Click "Sign in with Google" or "Sign in with Microsoft"
-4. Authenticate with your provider
-5. Redirect back to the app with a Clerk session cookie
+1. Visit any BRICK app (hub.lfiq.app, intel.lfiq.app, etc.)
+2. Access redirects you to `lfiq.cloudflareaccess.com`
+3. Choose Google, Microsoft, or request a one-time code
+4. Authenticate
+5. Access redirects you back to the app with an Access session cookie
 
-The route is `/login`, not `/sign-in`. Go straight to `https://<app>.lfiq.app/login` if you want to skip the redirect.
+Each Access application covers one hostname, so the first visit to a new app may send you through the Access page again.
 
-You may see two Clerk domains referenced elsewhere. `clerk.lfiq.app` is the Clerk Frontend API, which is infrastructure you never open in a browser. `accounts.lfiq.app` is the Clerk Account Portal, which the apps bypass for sign-in but still use for profile management and signing out of all sessions. Full detail is on [Clerk Authentication](/docs/clerk-auth).
-
-**Troubleshooting Clerk Login:**
-- **Cannot sign up at all:** Sign-up is restricted to an allowlist of company domains. You have to be invited before your first sign-in. The allowlist gates sign-ups only, so once you exist you always sign in
-- **"Session cookie expired":** Clear the `__session` cookie for the app domain and the Clerk domain, then sign in again
-- **Signed in but access denied:** You are authenticated but your Clerk org role does not include that app. A `brick_admin` grants it
+**Troubleshooting Login:**
+- **Access denies you before you reach the app:** the Access policy does not admit your address. Ask a `brick_admin`
+- **You clear Access but the app says access is not enabled:** your email has no row in `items.auth_allowed_users`, or the row does not list that app
+- **The app says it cannot check your access right now:** the allowlist lookup failed. That is an outage, not a permissions problem
 
 ### Access Model
 
-Access is decided by the Clerk org role, surfaced to each app as the `sessionClaims.apps` claim and checked in middleware.
+| App role | Default apps | Admin |
+|----------|--------------|-------|
+| `brick_admin` | Hub, Command, Intel, Keystone, Registry, Sticks, Stacks, Back9 | Yes |
+| `command_user` | Command, Registry, Sticks, Stacks | No |
 
-| App role | Clerk org role | Grants |
-|----------|----------------|--------|
-| `brick_admin` | `org:admin` | Hub, Registry, Intel, Command, Keystone, plus admin surfaces |
-| `command_user` | `org:member` | Command only |
+`items.auth_allowed_users` is the grant of record. Adding a row there is the whole grant, and it takes effect on the person's next request.
 
-Clerk is the single source of truth. The `items.auth_allowed_users` table is a read-only projection refreshed on every `/admin/users` load. Inserting a row there grants nothing.
+**Two ways to add a user:** Command `/admin/users` (your row must have `is_admin`), or Command's machine route `/api/machine/users` with `BRICK_MACHINE_ADMIN_SECRET`.
 
-**Two ways to add a user:** Hub `/admin/users` (you must be `brick_admin`), or the Clerk Dashboard's invite flow.
+### Auth Environment Variables (for Developers)
 
-### Clerk Environment Variables (for Developers)
-
-Pulled from Vercel with `vercel env pull`, never from a repo:
 ```bash
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=   # BRICK_CLERK_PUBLISHABLE_KEY is the fallback name
-CLERK_SECRET_KEY=                    # BRICK_CLERK_SECRET_KEY is the fallback name
-BRICK_CLERK_ORGANIZATION_ID=
-BRICK_AUTH_DISABLED=                 # local dev only
+CF_ACCESS_TEAM_DOMAIN=     # "lfiq"; shipped as a wrangler var in production
+CF_ACCESS_AUD=             # per-hostname audience tag; shipped as a wrangler var
+ITEMS_HUB_DATABASE_URL=    # Neon DSN holding items.auth_allowed_users
+BRICK_AUTH_DISABLED=       # local dev only
 ```
 
-Production needs a `pk_live_` publishable key. A `pk_test_` key points at a throwaway development instance that does not know your account.
-
-Do not pass these keys as module-level options to `clerkMiddleware`. Clerk reads them from the environment, and passing them explicitly breaks in the Edge Runtime.
-
-## Sticks Authentication (NextAuth)
-
-Sticks did not move to Clerk. It runs NextAuth v5 with a Google provider only, and gates access with an email allowlist checked in the sign-in callback.
-
-| Variable | Purpose |
-|----------|---------|
-| `AUTH_SECRET` | Session encryption |
-| `AUTH_GOOGLE_ID` | Google OAuth client ID |
-| `AUTH_GOOGLE_SECRET` | Google OAuth client secret |
-| `AUTH_ALLOWED_EMAILS` | Comma-separated allowlist |
-
-A trailing space pasted into `AUTH_GOOGLE_ID` is sent to Google verbatim and produces `Error 401: invalid_client`. Check for whitespace before assuming the client is misconfigured.
+Locally there is no Access application in front of the app. Set `BRICK_AUTH_DISABLED=true` to run without the gate; it is ignored in production.
 
 ## Neon Database Authentication
 
@@ -78,11 +57,11 @@ Direct database access uses Neon roles and connection strings. Each app connects
 
 ### Connection Strings
 
-**Base endpoint:** `ep-tiny-lab-akrddwgy.us-west-2.neon.tech`
+**Base endpoint:** `ep-tiny-lab-akrddwgy.us-west-2.aws.neon.tech`
 
 **Format:**
 ```
-postgresql://ROLE:PASSWORD@ep-tiny-lab-akrddwgy.us-west-2.neon.tech/neondb?sslmode=require
+postgresql://ROLE:PASSWORD@ep-tiny-lab-akrddwgy.us-west-2.aws.neon.tech/neondb?sslmode=require
 ```
 
 ### Database Roles (Least Privilege)
@@ -100,19 +79,13 @@ Grants alone are not always enough. Several tables have Row-Level Security enabl
 
 ### Getting a Connection String
 
-The DSN comes from the app's Vercel environment:
-
-```bash
-cd /path/to/the/app
-vercel env pull
-grep DATABASE_URL .env.local
-```
+Pull the DSN from the Neon console (project `morning-fire-74787570`, **Connect**) and put it in your local `.env.local`. It returns the pooled string; remove `-pooler` from the host for the direct string. Deployed Workers hold it as a secret; `npx wrangler secret list --name <worker>` confirms the name is set but never shows the value.
 
 Use the pooled `DATABASE_URL` at runtime. `DATABASE_URL_UNPOOLED` is for migration tooling only, and in at least one project it is stored wrapped in literal quotes, so code that reads it has to strip them.
 
 ### Local Database Access
 
-Connect directly to Neon with `psql`. There is no proxy step; Cloud SQL was deleted.
+Connect directly to Neon with `psql`. There is no proxy step.
 
 ```bash
 psql "$DATABASE_URL" -c "SELECT * FROM portfolio.properties LIMIT 5;"
@@ -122,38 +95,15 @@ psql "$DATABASE_URL" -c "SELECT * FROM portfolio.properties LIMIT 5;"
 **SSL Mode:** Required (always use `sslmode=require`)  
 **Schema:** The Neon console defaults to `public`. Switch the dropdown or qualify the table, or the data will look missing.
 
-## Google OAuth (Clerk Social Provider)
+## Google and Microsoft Sign-In (Access Identity Providers)
 
-Clerk delegates OAuth to Google. End users authenticate via Google Accounts.
+Google and Microsoft Entra ID are configured as identity providers on the Cloudflare Access team `lfiq`, not in any app. Part of the organization is on Microsoft 365 rather than Google Workspace, which is why both exist. The emailed one-time code is the fallback for an address on neither.
 
-### Configuration Details
+### Troubleshooting
 
-**Scopes:** Basic profile (email, name)  
-**Callback:** Clerk handles redirects automatically  
-**Where it is configured:** the Clerk dashboard. The Clerk Backend API does not expose auth strategies or the domain allowlist, so these cannot be changed by script.
-
-### Troubleshooting Google OAuth
-
-- **"Invalid OAuth client":** Clerk OAuth config drifted; contact platform team
-- **"Access denied":** The account's domain is not on the Clerk sign-up allowlist
-- **"Scope not granted":** User declined permission; ask them to log in again and grant all permissions
-
-## Microsoft OAuth (Clerk Social Provider)
-
-Clerk delegates OAuth to Microsoft. End users authenticate via Microsoft accounts and Microsoft 365 subscriptions.
-
-### Configuration Details
-
-**Scopes:** Basic profile (email, name, tenant ID)  
-**Callback:** Clerk handles redirects automatically
-
-Microsoft is not optional. Part of the organization is on Microsoft 365 rather than Google Workspace, and a Google-only setup would lock those users out.
-
-### Troubleshooting Microsoft OAuth
-
-- **"Invalid OAuth client":** Clerk OAuth config drifted; contact platform team
-- **"Tenant mismatch":** The account is from a tenant that is not allowlisted. A personal Microsoft account will not provision either
-- **"Scope not granted":** User declined permission; ask them to log in again and grant all permissions
+- **The provider rejects the sign-in:** the identity provider configuration in Cloudflare Zero Trust drifted; contact the platform team
+- **Access says you are not authorized:** the Access policy does not admit your address
+- **"Scope not granted":** you declined permission; sign in again and grant it
 
 ## GitHub CLI Authentication
 
@@ -202,19 +152,6 @@ Service: gh
   ```bash
   gh auth refresh
   ```
-
-## GCP Authentication
-
-You will rarely need this. GCP is a wind-down, not a working surface. Billing is disabled on the `brickston-v2` project, so the Cloud Scheduler API refuses every call. Batch jobs run on Fly and application secrets live in Vercel and Fly. Two Vertex AI workloads and one idle Cloud Run job are what remain.
-
-```bash
-gcloud auth login --launch-browser
-# The out-of-band flow is deprecated and fails. Use --launch-browser.
-```
-
-If a `gcloud` call returns "Reauthentication failed / cannot prompt", just retry. The credential often refreshes on the second attempt.
-
-See [GCP Cloud Run](/docs/gcp-cloud-run) for what is actually left.
 
 ## Fly.io Authentication
 
@@ -268,20 +205,20 @@ When an app runs more than one machine, `flyctl ssh sftp put` and `flyctl ssh co
 
 ## Anthropic API
 
-Hub and Keystone use the Anthropic API for Claude chat and embeddings.
+Intel, Keystone and the Command backend call the Anthropic API. Hub does not; its Brick chat is proxied to the Command backend.
 
 ### API Key
 
-The key name is `ANTHROPIC_API_KEY`. It is set in each app's Vercel environment and on the relevant Fly apps.
+On the Workers the key name is `ANTHROPIC_API_KEY` (set as a Worker secret on `brick-intel` and `brick-keystone`). On the `brickston-backend` Fly app it is `BRICKSTON_AI_ANTHROPIC_API_KEY`.
 
 ```bash
-vercel env pull
-grep ANTHROPIC_API_KEY .env.local
+npx wrangler secret list --name brick-intel     # names only
+flyctl secrets list -a brickston-backend        # names only
 ```
 
 ### Usage
 
-- **Hub chat proxy**: sends user messages to Claude via Anthropic API
+- **Hub chat proxy**: forwards user messages to the Command backend, which calls Claude
 - **Keystone embeddings**: generates embeddings for RAG (Retrieval-Augmented Generation)
 - **Intel insights**: Claude analysis on observations and properties
 
@@ -291,21 +228,21 @@ Rate limits and the spend cap are whatever is set on the account in the Anthropi
 
 ### Troubleshooting Anthropic API
 
-- **"Invalid API key":** Key rotated. Re-run `vercel env pull`, and update the Fly secret too if the backend is affected
+- **"Invalid API key":** Key rotated. Update the Worker secret with `npx wrangler secret put ANTHROPIC_API_KEY --name <worker>`, and the Fly secret too if the backend is affected
 - **"Rate limit exceeded":** Too many concurrent requests; add exponential backoff
 - **"Quota exceeded":** Spend limit hit; check the Anthropic console
 
 ## Summary: Which Credentials Do I Need?
 
-| Role | GitHub CLI | Vercel | Clerk | Fly.io | GCP |
+| Role | GitHub CLI | Cloudflare (wrangler) | Access + allowlist row | Fly.io | Neon |
 |------|-----------|--------|-------|--------|-----|
-| Developer (Frontend) | ✓ | ✓ (env pull) | ✓ (as a user) | ✗ | ✗ |
-| Developer (Backend) | ✓ | ✓ (env pull) | ✓ (as a user) | ✓ | ✗ |
-| DevOps / Platform | ✓ | ✓ (admin) | ✓ (admin) | ✓ | ✓ (residual workloads only) |
+| Developer (Frontend) | ✓ | ✓ | ✓ (as a user) | ✗ | ✓ |
+| Developer (Backend) | ✓ | ✓ | ✓ (as a user) | ✓ | ✓ |
+| DevOps / Platform | ✓ | ✓ (admin) | ✓ (`is_admin`) | ✓ | ✓ |
 | Product Manager | ✓ | ✗ | ✓ (as a user) | ✗ | ✗ |
 
 ## Next Steps
 
-- Complete **Setup** to clone the monorepo and install all tools
+- Complete **Setup** to clone the app repos and install all tools
 - Read each **App Guide** (Hub, Intel, Command, etc.) for app-specific auth flows
 - See [Auth Issues](/docs/auth-issues) for common authentication failures across all apps

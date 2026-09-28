@@ -22,49 +22,45 @@ Sticks is an AI assistant tailored to LFIQ knowledge:
 
 | Environment | URL | Status | Platform |
 |-------------|-----|--------|----------|
-| **Production** | https://sticks.lfiq.app | Live, git-connected auto-deploy | Vercel |
-| **Preview** | https://sticks-branch.lfiq.app | Auto-deploy on PR | Vercel |
-| **Local Dev** | http://localhost:3006 | Via `npm run dev` | Local machine |
+| **Production** | https://sticks.lfiq.app | Live, Workers Builds deploys on push to main | Cloudflare Worker `brick-sticks` |
+| **Local Dev** | http://localhost:3000 | Via `npm run dev` (`next dev`) | Local machine |
 
-Note the one-letter trap: `sticks.lfiq.app` is Sticks, `stacks.lfiq.app` is Stacks. They are different apps. `jr.lfiq.app` is attached to the Vercel project but has no DNS record, so it is dead.
+Note the one-letter trap: `sticks.lfiq.app` is Sticks, `stacks.lfiq.app` is Stacks. They are different apps. `jr.lfiq.app` has no DNS record, so it is dead.
 
 ## Tech Stack
 
 | Component | Tech | Notes |
 |-----------|------|-------|
-| **Frontend** | Next.js 15 | React 19, chat UI, thread management |
+| **Frontend** | Next.js 16 | React 19, chat UI, thread management, built for Workers with `@opennextjs/cloudflare` |
 | **Language** | TypeScript | Full type coverage |
-| **Auth** | NextAuth v5, Google provider | Sticks is the exception to the fleet Clerk migration. It has its own NextAuth setup with an email allowlist |
+| **Auth** | Cloudflare Access | NextAuth is gone. Middleware verifies the Access JWT; authorization is the `items.auth_allowed_users` row. Cron and webhook routes under `/api/sticks/*` authenticate themselves |
 | **Backend** | Next.js API routes | Prompt assembly and context retrieval run in-app |
 | **AI Model** | Anthropic Claude | Model id is set in code, check the repo before quoting one |
-| **Context** | Neon + Pinecone | Portfolio data, vector search for RAG |
-| **Deployment** | Vercel | Push to main auto-deploys, no promote step |
+| **Context** | Neon | Portfolio data |
+| **Deployment** | Cloudflare Workers | Workers Builds on push to main. Cron triggers in `wrangler.jsonc` are dispatched by `scheduled()` in `worker.ts` |
 
 ## Local Development
 
 ### Start the App
 
 ```bash
-cd /path/to/brick.apps/apps/sticks
+git clone https://github.com/LFIQ-Git/brick.sticks.git
+cd brick.sticks
 npm run dev
-# Runs on http://localhost:3006
+# Runs on http://localhost:3000
 ```
 
 ### Environment Variables
 
 | Variable | Required? | Purpose |
 |----------|-----------|---------|
-| `AUTH_SECRET` | Yes | NextAuth session encryption |
-| `AUTH_GOOGLE_ID` | Yes | Google OAuth client ID. Trailing whitespace here produces a confusing `invalid_client` error from Google |
-| `AUTH_GOOGLE_SECRET` | Yes | Google OAuth client secret |
-| `AUTH_ALLOWED_EMAILS` | Yes | Comma-separated allowlist. The sign-in callback rejects anything not on it |
 | `ANTHROPIC_API_KEY` | Yes | Claude API key (server only) |
 | `DATABASE_URL` | Yes | Neon connection for context retrieval |
+| `ITEMS_HUB_DATABASE_URL` | Prod | Neon connection for the `items.auth_allowed_users` allowlist. Falls back to `DATABASE_URL` |
+| `BRICK_AUTH_DISABLED` | No | Local dev only. Bypasses the Access gate |
+| `CRON_SECRET` | Prod | Authorizes the cron routes |
 
-Pull from Vercel:
-```bash
-vercel env pull
-```
+Production secrets are Worker secrets: `npx wrangler secret list --name brick-sticks` lists the names, `npx wrangler secret put <NAME> --name brick-sticks` sets one.
 
 ## How It Works
 
@@ -73,15 +69,14 @@ vercel env pull
 ```
 User Chat Input
   ↓
-Vercel Frontend (sticks.lfiq.app)
+Cloudflare Worker (sticks.lfiq.app), behind Cloudflare Access
   ↓
-NextAuth middleware (session check; API routes 401, pages redirect to /login)
+Access middleware (JWT check; API routes 401, pages redirect to /login)
   ↓
 Prompt Assembly:
   1. System prompt (tuned for LFIQ context)
   2. User question
   3. Context (property data, recent observations, market trends)
-  4. Document snippets (RAG from Pinecone)
   ↓
 Anthropic API (Claude Opus or Sonnet)
   ↓
@@ -119,7 +114,7 @@ Speak like a real estate operator. No jargon. No unnecessary caveats.
 ### Flow 1: Answer Property Question
 1. User types: "What's the occupancy at 123 Main?"
 2. Frontend posts to a Sticks API route
-3. Middleware checks the NextAuth session; an expired session returns 401 rather than redirecting, so the login page never streams into the transcript
+3. Middleware checks the Access identity; a failed check on an API route returns 401 rather than redirecting, so the login page never streams into the transcript
 4. The route retrieves from Neon:
    - Property record (address, units, units occupied)
    - Lease status (upcoming expirations)
@@ -134,15 +129,7 @@ Speak like a real estate operator. No jargon. No unnecessary caveats.
 3. User: "What's tenant turnover rate in the neighborhood?"
 4. Sticks: (retrieves historical turnover data) "Turnover in neighborhood is 15% annually. Your property is 10%. Strong performance."
 5. User: "Show me comparables"
-6. Sticks: (retrieves comps from Pinecone) "Here are 5 similar properties in the area with rent data..."
-
-### Flow 3: RAG (Retrieval-Augmented Generation)
-1. User: "What did we learn about the Sunset district?"
-2. Frontend posts to a Sticks API route
-3. The route queries Pinecone for embeddings related to "Sunset district"
-4. Top 5 documents/observations retrieved
-5. Claude reads context and synthesizes answer
-6. Response includes sources: "Based on observations from [dates], here's what we learned..."
+6. Sticks: "Here are 5 similar properties in the area with rent data..."
 
 ## Chat Context
 
@@ -154,24 +141,20 @@ Sticks can access the following data for context:
 | **Rent trends** | Neon market schema | Historical and current rent data |
 | **Observations** | Neon items schema | Intel observations (delinquency, lease expirations, alerts) |
 | **Comparables** | PropertyRadar (via Stacks) | Market comps, cap rates, distress scores |
-| **Documents** | Pinecone embeddings | Stored research, investment memos, market reports |
 | **Portfolio metrics** | Neon portfolio schema | Revenue, expenses, NOI, occupancy trends |
 
 ## Troubleshooting
 
 ### Issue 1: "Chat shows 'Error' state"
 **Symptom:** After typing a question, red error appears  
-**Cause:** The session expired (the API route returns 401), or the Anthropic key is missing  
+**Cause:** The Access session expired (the API route returns 401), or the Anthropic key is missing  
 **Fix:**
 ```bash
-# Check the app health endpoint, which is public
-curl https://sticks.lfiq.app/api/health
+# Stream the Worker logs
+npx wrangler tail brick-sticks
 
-# Check the deployment and function logs
-vercel logs --follow
-
-# Confirm the key name is set on the project
-vercel env ls
+# Confirm the key name is set on the Worker
+npx wrangler secret list --name brick-sticks
 
 # Sign out and back in, then clear site data
 # DevTools > Application > Clear Site Data
@@ -186,17 +169,13 @@ vercel env ls
 psql "$DATABASE_URL" \
   -c "SELECT address FROM portfolio.properties WHERE address ILIKE '%<street>%';"
 
-# Check function logs for context retrieval errors
-vercel logs --follow
-
-# Verify Pinecone embeddings are populated
-# Log in to Pinecone console: https://app.pinecone.io
-# Check vector count in index
+# Check Worker logs for context retrieval errors
+npx wrangler tail brick-sticks
 ```
 
 ### Issue 3: "Claude reference data that's incorrect or outdated"
 **Symptom:** "What's the rent at 123 Main?" → Returns data from 3 months ago  
-**Cause:** Neon data is stale, embeddings not updated, or context window too small  
+**Cause:** Neon data is stale, or context window too small  
 **Fix:**
 ```bash
 # Verify Neon has latest data
@@ -232,8 +211,8 @@ Ask Sticks:
 
 ## Related Documentation
 
-- **Architecture:** System topology, auth model, Pinecone RAG
+- **Architecture:** System topology, auth model
 - **Getting Started:** Setup, Logins, Install Tools
-- **Hub:** Similar chat interface (Brick chat), but on Clerk and proxied to the Fly backend
-- [Vercel Deployment](/docs/vercel-deployment)
+- **Hub:** Similar chat interface (Brick chat), proxied to the Fly backend
+- [Cloudflare Deployment](/docs/cloudflare-deployment)
 - **Anthropic API:** Claude models, pricing, rate limits

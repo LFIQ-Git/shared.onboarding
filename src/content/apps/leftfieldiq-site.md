@@ -1,259 +1,130 @@
 # Marketing Site Guide
 
-leftfieldiq.com is the public-facing product marketing website for LFIQ. It describes the platform, team, investment thesis, and career opportunities.
+leftfieldiq.com is the public-facing product site for Left Field IQ. It is a single page describing the platform, how it works, security and data handling, and the founder.
 
 ## What It Does
 
-The marketing site is LFIQ's storefront for investors, LPs, partners, and prospective employees:
-- **Product overview:** What LFIQ does, how it's different
-- **Investment thesis:** Why we're investing in real estate / PropTech
-- **Team profiles:** Investment team, engineering team, advisors
-- **Case studies:** Example deals and portfolio performance
-- **Press & news:** Recent announcements, media mentions
-- **Careers:** Job listings, company culture, hiring
-- **Contact:** General inquiries, partnership requests
+The marketing site is Left Field IQ's storefront for investors, partners, and prospective customers. The home page (`app/page.tsx`) carries these sections:
+- **Hero:** "Operating Intelligence for Real Estate Portfolios."
+- **About Left Field IQ** and **What Left Field IQ is**
+- **Core capabilities** and **Inside the platform**
+- **Who it's for** and **How it works**
+- **Security & data handling**
+- **Founder**
 
 **Primary features:**
-- Hero landing page
-- Platform features section (Hub, Intel, Command, Keystone, Registry, Stacks, Sticks)
-- Team bios with photos
-- Blog (optional, not currently implemented)
-- Contact form
-- Newsletter signup (optional)
+- Single landing page
+- Header **Login** button that links to BRICK Hub (`NEXT_PUBLIC_BRICK_LOGIN_URL`, `https://hub.lfiq.app/login` in `wrangler.jsonc`)
+- Site-wide password gate in `middleware.ts` (`SITE_PASSWORD`), with a login screen at `/login`
+- Launch handoff from LFI Home at `/api/gate/handoff`, verified with an HMAC token signed by `LFIQ_HANDOFF_SECRET`
+- PWA manifest and service worker
 
 ## Deployment
 
 | Environment | URL | Status | Platform |
 |-------------|-----|--------|----------|
-| **Production** | https://leftfieldiq.com | Live | Vercel |
-| **Preview** | Vercel preview URL per branch | Auto-deploy on PR | Vercel |
-| **Local Dev** | http://localhost:3007 | Via `npm run dev` | Local machine |
+| **Production** | https://leftfieldiq.com | Live | Cloudflare Worker `lfiq-website` |
+| **Local Dev** | http://localhost:3000 | Via `npm run dev` (`next dev`) | Local machine |
+| **Local Worker** | http://localhost:3001 | Via `npm run dev:vinext` | Local machine |
 
-The site is `leftfieldiq.com`. `leftfieldiq.app` does not resolve; do not link to it.
+`wrangler.jsonc` attaches two custom domains to the Worker: `leftfieldiq.com` and `lfiq.app`. The site is `leftfieldiq.com`. `leftfieldiq.app` does not resolve; do not link to it.
 
 ## Tech Stack
 
 | Component | Tech | Notes |
 |-----------|------|-------|
-| **Framework** | Next.js 15 | React 19, static generation (SSG) |
+| **Framework** | Next.js 15 | React 19, App Router, built for Workers with vinext |
 | **Language** | TypeScript | Full type coverage |
-| **Styling** | Tailwind CSS | Utility-first CSS |
-| **Content** | MDX | Markdown with embedded React components |
-| **Hosting** | Vercel | Global CDN, automatic deploys |
-| **Auth** | None | Public website, no login required |
+| **Styling** | Plain CSS | `styles/globals.css` |
+| **Content** | TSX | Copy lives in `app/page.tsx` |
+| **Hosting** | Cloudflare Workers | `npm run deploy:cloudflare` |
+| **Auth** | Shared site password | `middleware.ts` and `lib/gate.ts`. No user accounts |
 
 ## Local Development
 
 ### Start the Site
 
 ```bash
-cd /path/to/brick.apps/apps/leftfieldiq-site
+git clone https://github.com/LFIQ-Git/lfiq.website.git
+cd lfiq.website
 npm run dev
-# Runs on http://localhost:3007
+# Runs on http://localhost:3000
 ```
 
 ### File Structure
 
 ```
-apps/leftfieldiq-site/
+lfiq.website/
 ├── app/
-│   ├── page.tsx              # Home page (hero + features)
-│   ├── about/page.tsx        # Team, mission, values
-│   ├── careers/page.tsx      # Job listings
-│   ├── contact/page.tsx      # Contact form
-│   └── layout.tsx            # Global layout, header, footer
-├── components/
-│   ├── Header.tsx            # Navigation bar
-│   ├── Footer.tsx            # Footer with links
-│   ├── FeatureCard.tsx       # Reusable card component
-│   └── ...
-├── content/
-│   ├── team.json             # Team member data
-│   ├── jobs.json             # Job listings
-│   └── ...
-├── public/
-│   ├── images/
-│   │   ├── logo.png
-│   │   ├── team/
-│   │   └── ...
-│   └── ...
-└── ...
+│   ├── page.tsx              # The single landing page
+│   ├── layout.tsx            # Global layout and metadata
+│   ├── login/page.tsx        # Password gate login screen
+│   ├── api/auth/             # Password login endpoint
+│   ├── api/gate/             # Launch handoff from LFI Home
+│   ├── manifest.ts           # PWA manifest
+│   └── components/PwaRegister.tsx
+├── lib/
+│   ├── gate.ts               # Password gate cookie and hash
+│   └── launch-token.ts       # Handoff token verification
+├── middleware.ts             # Site-wide password gate
+├── styles/globals.css
+├── public/                   # PWA icons, robots.txt, sw.js
+└── wrangler.jsonc            # Worker name, vars, custom domains
 ```
 
 ### Environment Variables
 
 | Variable | Required? | Purpose |
 |----------|-----------|---------|
-| `NEXT_PUBLIC_SITE_URL` | No | Site URL for og:url tags (defaults to leftfieldiq.com) |
-| `SENDGRID_API_KEY` | No | Email for contact form (optional) |
+| `NEXT_PUBLIC_BRICK_LOGIN_URL` | No | Target of the header Login button. Set to `https://hub.lfiq.app/login` in `wrangler.jsonc` |
+| `SITE_PASSWORD` | Yes | Site-wide access password. If unset, the gate fails closed |
+| `LFIQ_HANDOFF_SECRET` | No | HMAC secret for launch handoff tokens from LFI Home. If unset, the handoff route fails closed |
 
-Pull from Vercel:
-```bash
-vercel env pull
-```
+The template is `.env.example`. In production, set secrets with `npx wrangler secret put <NAME> --name lfiq-website`.
 
 ## Key Pages
 
 ### Page 1: Home (/)
 
-The hero landing page with:
-- **Headline:** "Real estate investment powered by AI"
-- **Subheadline:** Description of LFIQ platform
-- **Features:** Visual cards for Hub, Intel, Command, Keystone, Registry, Stacks, Sticks
-- **CTA buttons:** "Explore Platform" (link to Hub), "Contact Us" (link to /contact)
-- **Social proof:** Logos of investors, partners, or metrics
+The single landing page. Every section listed under What It Does lives in `app/page.tsx`.
 
-### Page 2: About (/about)
+### Page 2: Login (/login)
 
-Team and company information:
-- **Mission statement**
-- **Team bios:** Name, title, photo, brief bio for each team member
-- **Values:** Investment philosophy, operating principles
-- **Advisors:** If applicable, list of external advisors
-
-### Page 3: Careers (/careers)
-
-Job listings and hiring information:
-- **Job board:** Available positions (Software Engineer, Data Analyst, Product Manager, etc.)
-- **Culture:** Why work at LFIQ
-- **Benefits:** Compensation, equity, health insurance, etc.
-- **How to apply:** Link to job application form (usually external)
-
-### Page 4: Contact (/contact)
-
-Contact form and inquiry information:
-- **Contact form:** Name, email, message, inquiry type (business, careers, press)
-- **Email:** General contact email (team@lfiq.app)
-- **Social links:** LinkedIn, GitHub, etc. (if applicable)
+The password gate screen. Visitors without the gate cookie are sent here by `middleware.ts`.
 
 ## Common Tasks
 
-### Task 1: Update Team Member Bio
+### Task 1: Update Page Copy
 
-Edit `apps/leftfieldiq-site/content/team.json`:
+Edit the relevant section in `app/page.tsx`, then check it locally with `npm run dev`.
 
-```json
-[
-  {
-    "name": "Jane Doe",
-    "title": "Founder & Principal",
-    "bio": "Jane has 10 years of experience in real estate operations and PropTech.",
-    "photo": "/images/team/jane.jpg",
-    "email": "jane@leftfieldinv.com",
-    "linkedin": "https://linkedin.com/in/janedoe"
-  },
-  // Add new team member here
-]
-```
+### Task 2: Update Metadata
 
-Then add photo to `public/images/team/`.
-
-Restart: `npm run dev`
-
-### Task 2: Add a Job Listing
-
-Edit `apps/leftfieldiq-site/content/jobs.json`:
-
-```json
-[
-  {
-    "title": "Senior Software Engineer",
-    "department": "Engineering",
-    "location": "San Francisco, CA",
-    "type": "Full-time",
-    "description": "We're hiring a senior engineer to build the next generation of real estate software...",
-    "applyUrl": "https://jobs.example.com/apply/senior-engineer",
-    "postedDate": "2024-08-11"
-  },
-  // Add new job here
-]
-```
-
-Restart: `npm run dev`
-
-### Task 3: Update Hero Copy
-
-Edit `apps/leftfieldiq-site/app/page.tsx`:
-
-```typescript
-export default function Home() {
-  return (
-    <section className="hero">
-      <h1>Real estate investment powered by AI</h1>
-      <p>Your new headline here</p>
-      {/* ... */}
-    </section>
-  );
-}
-```
-
-Restart: `npm run dev`
-
-### Task 4: Add a Blog Post (Future)
-
-When blog is implemented:
-
-```bash
-# Create new markdown file
-touch apps/leftfieldiq-site/content/blog/my-post.mdx
-
-# Add frontmatter
----
-title: "Post Title"
-date: "2024-08-11"
-author: "Author Name"
----
-
-# Post content in markdown
-```
+Edit the `metadata` export in `app/layout.tsx`.
 
 ## Troubleshooting
 
-### Issue 1: "Team photos not loading"
-**Symptom:** Team page shows broken image icons  
-**Cause:** Image file not in /public/images/team/, or wrong path in JSON  
+### Issue 1: "Every page shows the login screen, and the password is refused"
+**Symptom:** The gate never lets you through  
+**Cause:** `SITE_PASSWORD` is unset on the Worker, so the gate fails closed  
 **Fix:**
 ```bash
-# Verify image exists
-ls apps/leftfieldiq-site/public/images/team/
-
-# Update JSON with correct path (relative to /public)
-# Should be: "/images/team/jane.jpg" not "./images/team/jane.jpg"
-
-npm run dev
+npx wrangler secret list --name lfiq-website
 ```
 
-### Issue 2: "Job board not showing new postings"
-**Symptom:** Added job to jobs.json but it doesn't appear on /careers  
-**Cause:** Next.js cache not cleared, or JSON syntax error  
+### Issue 2: "Cloudflare deploy fails"
+**Symptom:** `npm run deploy:cloudflare` errors out  
+**Cause:** Build error or missing dependency  
 **Fix:**
 ```bash
-# Clear Next.js cache
-rm -rf .next
+# Test the Worker build locally
+npm run build:vinext
 
-# Verify JSON is valid
-cat apps/leftfieldiq-site/content/jobs.json | json_pp
-# If error, fix syntax (missing comma, bracket, etc.)
+# Dry-run the deploy
+npm run dry-run:cloudflare
 
-npm run dev
-```
-
-### Issue 3: "Vercel deployment fails"
-**Symptom:** Push to main doesn't deploy  
-**Cause:** Build error, missing environment variable, or image optimization issue  
-**Fix:**
-```bash
-# Test build locally
-npm run build
-
-# If build fails, check error message
-# Common issues: missing image, TypeScript error, missing dependency
-
-# Check Vercel build logs
-vercel logs --follow
-
-# Deploy manually if needed
-vercel deploy --prod
+# Stream production logs
+npx wrangler tail lfiq-website
 ```
 
 ## Content Guidelines
@@ -277,27 +148,13 @@ vercel deploy --prod
 
 ## SEO & Meta Tags
 
-The site automatically generates meta tags for:
-- `<title>`: Page title (defaults to "LFIQ | Real Estate Powered by AI")
-- `og:title`, `og:description`, `og:image`: Social media sharing
-- `meta charset`, `viewport`: Mobile-friendly, encoding
-
-To customize, edit `app/layout.tsx`:
-
-```typescript
-export const metadata: Metadata = {
-  title: "LFIQ | Real Estate Powered by AI",
-  description: "...",
-  openGraph: {
-    title: "LFIQ",
-    description: "...",
-    images: ["/images/og-image.png"],
-  },
-};
-```
+Metadata is set in `app/layout.tsx`:
+- `<title>`: defaults to "Left Field IQ · LFI", with the template "%s · Left Field IQ · LFI"
+- `description`, `openGraph` (title, description, url, site name) and `robots`
+- `metadataBase` is `https://leftfieldiq.com`
 
 ## Related Documentation
 
 - **Getting Started:** Setup, Logins, Install Tools
-- **Vercel Deployment:** Auto-deploy on git push to main
-- **Next.js:** Static generation (SSG), image optimization, SEO
+- [Cloudflare Deployment](/docs/cloudflare-deployment)
+- **Next.js:** App Router, metadata, SEO

@@ -1,22 +1,21 @@
 # Registry App Guide
 
-Registry is the deal tracking and CRM system for LFIQ. It manages opportunities, activities, documents, and communications across the deal pipeline.
+Registry is the deal tracking and CRM system for LFIQ. It tracks one record per live deal, with its parties, events, documents and forwarded email.
 
 ## What It Does
 
 Registry provides a centralized hub for deal sourcing and tracking:
 - **Deals:** Acquisition opportunities with property details, financial metrics, status
-- **Opportunities:** Early-stage prospects, comp analysis, PropertyRadar integration
-- **Activities:** Calls, emails, meetings, notes on each deal
+- **Candidates:** Sourced deals graduated from Stacks (`registry.deal_candidates`)
+- **Events and updates:** Open items, deadlines and updates per deal
 - **Documents:** Offering memorandums, term sheets, financial models, due diligence
-- **Contacts:** Brokers, owners, advisors, lenders
-- **Pipeline:** Stages (sourcing, underwriting, closing, monitoring, off-market)
+- **Parties:** Lender, counsel, counterparty and internal contacts per deal
+- **Pipeline:** Statuses (pipeline, active, closing, closed, dead)
 
 **Primary features:**
 - Deal browser and search
-- Opportunity creation from PropertyRadar
 - Deal financials (acquisition price, cap rate, IRR)
-- Email forwarding ingest (deal@in.lfiq.app)
+- Per-deal email forwarding ingest (`d-<token>@deals.lfiq.app`)
 - Activity log
 - Document management
 
@@ -24,113 +23,88 @@ Registry provides a centralized hub for deal sourcing and tracking:
 
 | Environment | URL | Status | Platform |
 |-------------|-----|--------|----------|
-| **Production** | https://registry.lfiq.app | Live | Vercel |
-| **Preview** | https://registry-branch.lfiq.app | Auto-deploy on PR | Vercel |
-| **Local Dev** | http://localhost:3004 | Via `npm run dev` | Local machine |
+| **Production** | https://registry.lfiq.app | Live, Workers Builds deploys on push to main | Cloudflare Worker `brick-registry` |
+| **Local Dev** | http://localhost:3000 | Via `npm run dev` (`next dev`) | Local machine |
 
 ## Tech Stack
 
 | Component | Tech | Notes |
 |-----------|------|-------|
-| **Framework** | Next.js 15 | React 19, App Router |
+| **Framework** | Next.js 16 | React 19, App Router, built for Workers with `@opennextjs/cloudflare` |
 | **Language** | TypeScript | Full type coverage |
-| **Auth** | Clerk | Shared fleet instance. See [Clerk Authentication](/docs/clerk-auth) |
-| **Database** | Neon (registry schema) | Deals, opportunities, activities, contacts |
-| **Email Ingest** | Cloudflare Worker + Neon | deal@in.lfiq.app forwarding |
-| **Deployment** | Vercel | Auto-deploy on main |
+| **Auth** | Cloudflare Access | Clerk was removed 2026-09-15. Authorization is the `registry` grant in `items.auth_allowed_users`, checked on `/login` |
+| **Database** | Neon (registry schema) | Deals, parties, events, compliance events |
+| **Email Ingest** | Resend inbound webhook + Neon | Per-deal addresses on `deals.lfiq.app`, posted to `/api/inbound/resend` |
+| **Deployment** | Cloudflare Workers | Workers Builds on push to main |
 
 ## Local Development
 
 ### Start the App
 
 ```bash
-cd /path/to/brick.apps/apps/registry
+git clone https://github.com/LFIQ-Git/brick.registry.git
+cd brick.registry
 npm run dev
-# Runs on http://localhost:3004
+# Runs on http://localhost:3000
 ```
 
 ### Environment Variables
 
 | Variable | Required? | Purpose |
 |----------|-----------|---------|
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | Clerk publishable key. `BRICK_CLERK_PUBLISHABLE_KEY` is the fallback name |
-| `CLERK_SECRET_KEY` | Yes | Clerk secret key. `BRICK_CLERK_SECRET_KEY` is the fallback name |
 | `BRICK_AUTH_DISABLED` | No | Local dev only. Set `true` in `.env.local` |
 | `DATABASE_URL` | Yes | Neon connection, pooled (registry schema). Never use `DATABASE_URL_UNPOOLED` here |
-| `DEAL_INGEST_SECRET` | Yes | Email forwarding validation |
+| `ITEMS_HUB_DATABASE_URL` | Prod | Neon connection holding `items.auth_allowed_users`. Falls back to `DATABASE_URL` |
+| `RESEND_INBOUND_WEBHOOK_SECRET` | Yes, for email ingest | Verifies the Resend (Svix) signature on `/api/inbound/resend` |
+| `INBOUND_EMAIL_DOMAIN` | No | Domain for per-deal addresses. Defaults to `deals.lfiq.app` |
+| `RESEND_API_KEY` / `NOTIFICATIONS_FROM` | Prod | Outbound notification email |
+| `CRON_SECRET` | Prod | Bearer token the Worker's `0 14 * * *` cron trigger sends to `/api/notifications/run` |
 
-Do not pass the Clerk keys as module-level options to `clerkMiddleware`. Clerk reads them from the environment, and passing them explicitly breaks in the Edge Runtime.
-
-Pull from Vercel:
-```bash
-vercel env pull
-```
+For local dev, `.dev.vars.example` lists the Worker variables. Production secrets are Worker secrets: `npx wrangler secret list --name brick-registry` lists the names, `npx wrangler secret put <NAME> --name brick-registry` sets one.
 
 ## Database Schema
 
-The `registry` schema contains four main tables:
+The `registry` schema's core tables (from `drizzle/migrations/0001_registry_schema.sql`):
 
-| Table | Purpose | Example |
-|-------|---------|---------|
-| **deals** | Acquisition opportunities | Property address, purchase price, cap rate |
-| **opportunities** | Early-stage prospects | PropertyRadar listing, property type, location |
-| **activities** | Deal interactions | Call with broker, email received, meeting scheduled |
-| **contacts** | People and organizations | Broker name, title, email, phone |
-| **documents** | Attached files | Offering memo, term sheet, financial model |
+| Table | Purpose |
+|---------|---------|
+| **deals** | One row per deal: name, type, status, property codes, target close date |
+| **deal_parties** | Parties per deal: lender, counsel, counterparty, internal |
+| **deal_events** | Open items and deadlines per deal |
+| **compliance_events** | Code violations with dollar exposure, not keyed to a deal |
+
+Later migrations add, among others, `deal_emails` (forwarded email ingest), `section_subscriptions` and `notifications`.
 
 ## Key Flows
 
-### Flow 1: Create a Deal from PropertyRadar
-1. User navigates to registry.lfiq.app/opportunities
-2. User searches PropertyRadar data (integrated via API)
-3. User clicks "Create Deal" on a property
-4. Form pre-populated: address, parcel number, zoning, recent sales
-5. User adds: purchase price, financing, expected IRR
-6. Submit → INSERT into registry.deals
-7. Opportunity moves to "Underwriting" stage
+### Flow 1: Create a Deal
+1. User navigates to `registry.lfiq.app/deals/new`
+2. User fills in the new deal form
+3. Submit → INSERT into registry.deals
 
-### Flow 2: Ingest Email via deal@in.lfiq.app
-1. User forwards deal email to deal@in.lfiq.app
-2. Cloudflare Worker captures email (to, from, subject, body, attachments)
-3. Worker validates X-Forwarding-Secret header
-4. Worker POSTs email payload to Registry ingest endpoint
-5. Registry extracts deal info (property address, contact name, etc.)
-6. Optionally creates new opportunity or links to existing deal
-7. Email content saved as activity note
-8. Attachments extracted to deal documents folder
+### Flow 2: Ingest Email to a Deal
+1. Each deal has its own forwarding address, `d-<token>@deals.lfiq.app`, built from `registry.deals.inbox_token`
+2. User forwards the email to that address
+3. Resend receives it and posts a signed webhook to `/api/inbound/resend`
+4. The route verifies the signature with `RESEND_INBOUND_WEBHOOK_SECRET` and finds the deal from the token in To or Cc
+5. The email is stored in `registry.deal_emails` and processed against the deal. An unknown token is acknowledged with 200 so tokens cannot be enumerated
 
-### Flow 3: Update Deal Activity
+### Flow 3: Review a Deal
 1. User navigates to `registry.lfiq.app/deals/{dealId}`
-2. User clicks "Add Activity"
-3. Form: activity type (call, email, meeting, note), summary, date
-4. Submit → INSERT into registry.activities
-5. Activity appears in timeline
-6. If type is "email," can attach forwarded message
+2. The detail page shows the deal's parties, events and timeline
 
 ## Troubleshooting
 
 ### Issue 1: "Email forwarding not working"
-**Symptom:** Emails sent to deal@in.lfiq.app don't appear in Registry  
-**Cause:** Cloudflare Worker failed, forwarding secret not set, or Neon ingest endpoint down  
+**Symptom:** Emails forwarded to a deal address don't appear in Registry  
+**Cause:** `RESEND_INBOUND_WEBHOOK_SECRET` is not set (the route rejects every webhook with 401), the signature fails, or the address token does not match a deal  
 **Fix:**
 ```bash
-# Check Cloudflare Worker logs
-# Log in to Cloudflare Dashboard
-# Workers > Logs > Filter for deal-ingest
+# Verify the secret name is set on the Worker
+npx wrangler secret list --name brick-registry
 
-# Verify the secret is set on the Vercel project
-vercel env ls
-
-# Test ingest endpoint
-curl -X POST https://registry.lfiq.app/api/ingest/email \
-  -H "X-Forwarding-Secret: $DEAL_INGEST_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "to": "deal@in.lfiq.app",
-    "from": "test@example.com",
-    "subject": "Test Deal",
-    "body": "Test message"
-  }'
+# Watch the route while a test email arrives
+npx wrangler tail brick-registry
 ```
 
 ### Issue 2: "Deal creation returns error"
@@ -154,41 +128,33 @@ psql "$DATABASE_URL" -c "SELECT 1 FROM registry.deals LIMIT 1;"
 **Fix:**
 ```bash
 # PropertyRadar is a gated paid adapter owned by Stacks, not Registry.
-# Check the key on the Stacks Vercel project, not here
-vercel env ls
-
-# Verify quota hasn't exceeded
-# Log in to PropertyRadar dashboard at https://portal.propertyradar.com
-
-# Check integration status
-# Ensure NEXT_PUBLIC_PROPERTYRADAR_ENABLED=true
+# Check the key on the Stacks Worker, not here
+npx wrangler secret list --name brick-stacks
 ```
 
 ## Common Tasks
 
 ### Task 1: Query Deals by Status
 ```sql
-SELECT id, property_address, status, created_at
+SELECT id, name, type, status, created_at
 FROM registry.deals
-WHERE status IN ('sourcing', 'underwriting')
+WHERE status IN ('pipeline', 'active')
 ORDER BY created_at DESC;
 ```
 
-### Task 2: Get Deal Activity Timeline
+### Task 2: Get Open Items for a Deal
 ```sql
-SELECT created_at, activity_type, summary
-FROM registry.activities
-WHERE deal_id = $1
-ORDER BY created_at DESC
-LIMIT 20;
+SELECT title, due_date, notes
+FROM registry.deal_events
+WHERE deal_id = $1 AND completed_at IS NULL
+ORDER BY due_date;
 ```
 
-### Task 3: Find Contacts for a Deal
+### Task 3: Find Parties for a Deal
 ```sql
-SELECT c.name, c.title, c.email, c.phone
-FROM registry.contacts c
-JOIN registry.deal_contacts dc ON dc.contact_id = c.id
-WHERE dc.deal_id = $1;
+SELECT name, role, contact
+FROM registry.deal_parties
+WHERE deal_id = $1;
 ```
 
 ## Related Documentation

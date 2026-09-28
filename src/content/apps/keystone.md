@@ -9,46 +9,47 @@ Keystone is a personal operating system for knowledge workers:
 - **Tasks:** Personal task management, synced across devices
 - **Automation:** Python scripts for ETL, data enrichment, and integrations
 - **Dashboard:** Real-time metrics, portfolio summary, market pulse
-- **Connections:** OAuth connectors to M365, Slack, GitHub, Pinecone, and other services
-- **MCP server:** Provides brick_* tools for Claude Code and Anthropic agents
+- **Connections:** OAuth connections to M365, Google, Box, Dropbox, Smartsheet and Zoom
+- **MCP server:** Provides pkm_* tools (as surfaced by the Brick MCP) for Claude Code and Anthropic agents
 
 **Primary features:**
 - Daily briefing
 - Task list (database-backed)
 - Automation runner (on-demand, invoked through the MCP server)
-- Connectors UI (OAuth token management)
+- Connections UI at `/connections` (OAuth token management)
 - Metrics dashboard
 
 ## Deployment
 
 | Environment | URL | Status | Platform |
 |-------------|-----|--------|----------|
-| **Production** | https://keystone.lfiq.app | Live | Vercel |
-| **Preview** | https://keystone-branch.lfiq.app | Auto-deploy on PR | Vercel |
-| **Local Dev** | http://localhost:3003 | Via `npm run dev` | Local machine |
+| **Production** | https://keystone.lfiq.app | Live, Workers Builds deploys on push to main | Cloudflare Worker `brick-keystone` |
+| **Local Dev** | http://localhost:3000 | Via `npm run dev` (`next dev`) | Local machine |
+| **Local Worker** | http://localhost:3001 | Via `npm run dev:vinext` | Local machine |
 | **MCP Server** | https://keystone-mcp.lfiq.app | Fly app `pkm-mcp` | Remote |
 
 ## Tech Stack
 
 | Component | Tech | Notes |
 |-----------|------|-------|
-| **Frontend** | Next.js 15 | React 19, dashboard, task UI |
+| **Frontend** | Next.js 16 | React 19, dashboard, task UI, built for Workers with vinext |
 | **Language** | TypeScript | Full type coverage |
-| **Auth** | Clerk | `sessionClaims.apps` gate in `middleware.ts` |
+| **Auth** | Cloudflare Access | `middleware.ts` verifies the Access identity. Authorization is the `items.auth_allowed_users` row. `/api/*` is public in middleware |
 | **Database** | Neon (public schema) | Tasks, daily briefing, automation state |
 | **Backend** | Python | ETL, briefing generation, automation scripts |
 | **MCP Server** | Python on Fly (`pkm-mcp`) | Provides pkm_* tools |
-| **Secrets** | Vercel environment, Fly app secrets, macOS Keychain | OAuth tokens, API keys |
-| **Deployment** | Vercel (frontend), `flyctl deploy` (MCP server) | Vercel auto-deploys on main |
+| **Secrets** | Worker secrets, Fly app secrets, macOS Keychain | OAuth tokens, API keys |
+| **Deployment** | Cloudflare Workers (frontend), `flyctl deploy` (MCP server) | Workers Builds deploys the frontend on push to main |
 
 ## Local Development
 
 ### Start the Frontend
 
 ```bash
-cd /path/to/02-brick.apps/apps/keystone
+git clone https://github.com/LFIQ-Git/brick.keystone.git
+cd brick.keystone
 npm run dev
-# Runs on http://localhost:3003
+# Runs on http://localhost:3000
 ```
 
 ### Start the Backend (Python Automation)
@@ -59,11 +60,9 @@ Keystone's backend is a set of Python automation scripts under `automation/`. Th
 
 Run a script directly:
 ```bash
-cd /path/to/02-brick.apps/02-brick.keystone
+cd brick.keystone
 .venv/bin/python automation/scripts/<script>.py
 ```
-
-The keystone root has two virtualenvs and they are not interchangeable. `.venv` is Python 3.13 and was the launchd venv. `venv` is Python 3.14 and is what the MCP entry point runs. Both are live for different consumers.
 
 Scheduled agent work now lives in the MCP scheduled-tasks scheduler (`~/.claude/scheduled-tasks/`) and in the Cowork registry. A task belongs to exactly one of the two. Registering it in both double-fires it.
 
@@ -72,12 +71,11 @@ Scheduled agent work now lives in the MCP scheduled-tasks scheduler (`~/.claude/
 | Variable | Required? | Purpose |
 |----------|-----------|---------|
 | `DATABASE_URL` | Yes | Neon connection (public schema, pkm role) |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | Clerk publishable key. `BRICK_CLERK_PUBLISHABLE_KEY` is the fallback name |
-| `CLERK_SECRET_KEY` | Yes | Clerk secret key. `BRICK_CLERK_SECRET_KEY` is the fallback name |
-| `BRICK_AUTH_DISABLED` | No | Local dev only. Set `true` to bypass the Clerk gate |
+| `ITEMS_HUB_DATABASE_URL` | Yes | Neon connection for the `items.auth_allowed_users` allowlist |
+| `BRICK_AUTH_DISABLED` | No | Local dev only. Set `true` to bypass the Access gate |
 | `ANTHROPIC_API_KEY` | Yes | Claude for briefing generation |
-| `PKM_DASHBOARD_URL` | Yes | Base URL the MCP server posts to for `/api/refresh` |
-| `PKM_PUBLIC_UI_ORIGIN` | No | Public origin used in generated links |
+| `CRON_SECRET` | Yes | Bearer token the Worker's cron trigger sends to `/api/cron/carry-score` |
+| `PKM_DASHBOARD_URL` | MCP server | Base URL the MCP server posts to for `/api/refresh` |
 
 On the Fly app `pkm-mcp`, three settings do not survive a bare redeploy and have to be re-set, or `/oauth/token` returns a 500:
 
@@ -87,10 +85,7 @@ On the Fly app `pkm-mcp`, three settings do not survive a bare redeploy and have
 | `PKM_MCP_OAUTH_CLIENT_SECRET` | Client credentials shim |
 | `PKM_MCP_PUBLIC_URL` | Must be the `https://` URL. If unset, the discovery document advertises `http://`, the client's POST gets downgraded to GET on the redirect, and you see a misleading 405 |
 
-Pull from Vercel:
-```bash
-vercel env pull
-```
+For local dev, copy `.dev.vars.example` to `.dev.vars`. Production secrets are Worker secrets: `npx wrangler secret list --name brick-keystone` lists the names, `npx wrangler secret put <NAME> --name brick-keystone` sets one. The Worker's only cron trigger is `5 8 * * *` (carry-score snapshot).
 
 ## Daily Briefing Generation
 
@@ -159,36 +154,29 @@ The briefing includes:
 Keystone's automation directory contains reusable Python scripts:
 
 ```
-apps/keystone/automation/
-├── jobs/
-│   ├── briefing_generator.py       # Daily briefing
-│   ├── task_syncer.py              # M365 task sync
-│   ├── property_enricher.py        # Enrich properties with market data
+brick.keystone/automation/
+├── scripts/
+│   ├── daily_briefing.py           # Daily briefing
 │   └── ...
-├── connectors/
-│   ├── m365.py                     # Microsoft Graph API
-│   ├── slack.py                    # Slack notifications
-│   ├── pinecone.py                 # Vector embeddings
-│   └── ...
-├── mcp_server.py                   # Anthropic MCP server
+├── mcp_server.py                   # MCP server
 └── requirements.txt                # Python dependencies
 ```
 
 ### Running an Automation Script Locally
 
 ```bash
-cd /path/to/02-brick.apps/02-brick.keystone
+cd brick.keystone
 
-# Install Python dependencies into the 3.13 venv
+# Install Python dependencies
 .venv/bin/pip install -r automation/requirements.txt
 
-# Run a script. Environment comes from .env.local, which vercel env pull creates
-.venv/bin/python automation/jobs/briefing_generator.py
+# Run a script. Environment comes from .env.local
+.venv/bin/python automation/scripts/daily_briefing.py
 ```
 
 ## MCP Server (keystone-mcp)
 
-Keystone provides an MCP server that exposes brick_* tools for Claude Code and Anthropic agents. This allows agents to:
+Keystone provides an MCP server that exposes the pkm_* tools for Claude Code and Anthropic agents. This allows agents to:
 - Query tasks and projects
 - Create and update tasks
 - Query portfolio data
@@ -207,8 +195,7 @@ This calls the Keystone MCP server and returns current PKM state.
 ### Server Location
 
 - **Production:** https://keystone-mcp.lfiq.app, served by the Fly app `pkm-mcp` (org brickston, region sjc)
-- **Source:** `02-brick.keystone/automation/mcp_server.py`
-- Note: `pkm-mcp` and the suspended `pkm-mcp-server` are different apps. Only `pkm-mcp` serves the live host.
+- **Source:** `brick.keystone/automation/mcp_server.py`
 
 ## Troubleshooting
 
@@ -222,7 +209,7 @@ psql "$DATABASE_URL" -c \
   "SELECT briefing_date, length(content) FROM public.daily_briefing ORDER BY briefing_date DESC LIMIT 5;"
 
 # Generate one on demand
-.venv/bin/python automation/jobs/briefing_generator.py
+python3 automation/scripts/daily_briefing.py
 ```
 Do not reinstate a launchd job to fix this. See [Daily Briefing](/docs/daily-briefing).
 
@@ -232,7 +219,7 @@ Do not reinstate a launchd job to fix this. See [Daily Briefing](/docs/daily-bri
 **Fix:**
 ```bash
 # Re-authorize in the UI
-# Visit keystone.lfiq.app/connectors and reconnect the account
+# Visit keystone.lfiq.app/connections and reconnect the account
 
 # Then re-run the pull from the Intel side
 curl "https://intel.lfiq.app/api/cron/connections-pull?secret=$INGEST_SECRET"
@@ -265,8 +252,8 @@ CREATE POLICY pkm_all ON public.<table> FOR ALL TO pkm USING (true) WITH CHECK (
 
 ### Task 1: Generate Briefing On-Demand
 ```bash
-cd /path/to/02-brick.apps/02-brick.keystone
-.venv/bin/python automation/jobs/briefing_generator.py
+cd brick.keystone
+python3 automation/scripts/daily_briefing.py
 ```
 
 ### Task 2: Query Task List

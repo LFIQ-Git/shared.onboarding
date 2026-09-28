@@ -6,7 +6,7 @@ import '@/styles/globals.css';
 
 // Self-hosted rather than pulled from next/font/google. Google Fonts is
 // fetched at build time, so a network blip against fonts.gstatic.com fails the
-// whole Vercel build. Manrope is the BRICK family display face and is used on
+// whole build. Manrope is the BRICK family display face and is used on
 // the hub cover so this app reads as part of the same fleet.
 const inter = localFont({
   src: './fonts/inter-latin-var.woff2',
